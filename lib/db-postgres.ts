@@ -129,14 +129,31 @@ export async function listFiles(kbId: string) {
   }>;
 }
 
+// Not yet exercised against a live Postgres connection (no instance available
+// to test against while building this) — pg-types-style drivers normally
+// decode bytea into a real Buffer automatically like `pg` does, but this
+// covers the other shapes a JSON-over-HTTP transport could plausibly hand
+// back instead, so a citation download can't silently come back corrupted.
+// If real testing turns up a shape not covered here, it'll throw here loudly
+// (Buffer.from rejects genuinely unrecognized input) rather than the download
+// silently serving garbled bytes.
+function decodeBytea(value: unknown): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  if (typeof value === "string") {
+    // Postgres text-format bytea, e.g. "\x89504e470d0a1a0a..."
+    if (value.startsWith("\\x")) return Buffer.from(value.slice(2), "hex");
+    return Buffer.from(value, "base64");
+  }
+  return Buffer.from(value as ArrayBuffer);
+}
+
 export async function getFileContent(fileId: string) {
   await ensureInit();
   const rows = await sql`SELECT filename, mimetype, content FROM files WHERE id = ${fileId}`;
-  const row = (rows as unknown as Array<{ filename: string; mimetype: string; content: Buffer }>)[0];
+  const row = (rows as unknown as Array<{ filename: string; mimetype: string; content: unknown }>)[0];
   if (!row) return undefined;
-  // neon's driver returns bytea columns as a Buffer already; guard in case a
-  // future driver version hands back a plain Uint8Array/array instead.
-  return { ...row, content: Buffer.isBuffer(row.content) ? row.content : Buffer.from(row.content) };
+  return { filename: row.filename, mimetype: row.mimetype, content: decodeBytea(row.content) };
 }
 
 export async function getFileChunks(kbId: string, folder?: Folder) {
@@ -166,8 +183,14 @@ export async function insertFeedback(input: {
 
 export async function setFeedbackThumbs(id: string, thumbs: "up" | "down") {
   await ensureInit();
-  const result = await sql`UPDATE feedback SET thumbs = ${thumbs} WHERE id = ${id}`;
-  return (result as unknown as { length: number }).length > 0;
+  // neon's tagged-template `sql` returns only result *rows* by default (not a
+  // rowCount) — a plain UPDATE with no RETURNING clause always comes back as
+  // an empty array regardless of whether it matched anything, which would
+  // make this silently report "not found" on every successful update. RETURNING
+  // id makes the affected row (if any) show up in the result so `.length` is
+  // actually meaningful.
+  const rows = await sql`UPDATE feedback SET thumbs = ${thumbs} WHERE id = ${id} RETURNING id`;
+  return (rows as unknown as Array<{ id: string }>).length > 0;
 }
 
 export async function listFeedbackForKB(kbId: string) {
