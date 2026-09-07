@@ -1,23 +1,17 @@
+import { PDFParse } from "pdf-parse";
 import type { Chunk } from "../types";
 
-// pdf-parse's CJS entrypoint has a top-level debug block guarded by
-// `require.main === module`, so it's safe to require() from within a route.
-// We use its `pagerender` hook to capture text per physical page, which is
-// what makes the "(Slides, slide 12)"-style citation reliable for PDFs.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
-
+// pdf-parse v2's PDFParse class gives per-page text natively via getText(),
+// which is what makes the "(Slides, slide 12)"-style citation reliable for
+// PDFs — no layout guessing needed.
 export async function extractPdf(buffer: Buffer): Promise<Chunk[]> {
-  const pages: string[] = [];
-
-  await pdfParse(buffer, {
-    pagerender: async (pageData: { getTextContent: () => Promise<{ items: Array<{ str: string }> }> }) => {
-      const textContent = await pageData.getTextContent();
-      const text = textContent.items.map((item) => item.str).join(" ");
-      pages.push(text);
-      return text;
-    },
-  });
-
-  return pages.map((text, i) => ({ label: `Page ${i + 1}`, text: text.trim() })).filter((c) => c.text.length > 0);
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return result.pages
+      .map((p) => ({ label: `Page ${p.num}`, text: p.text.trim() }))
+      .filter((c) => c.text.length > 0);
+  } finally {
+    await parser.destroy();
+  }
 }

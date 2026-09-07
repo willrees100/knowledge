@@ -55,6 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       results.push({ filename: file.name, ok: true, chunkCount: chunks.length });
     } catch (err) {
+      console.error(`Failed to parse ${file.name}:`, err);
       results.push({
         filename: file.name,
         ok: false,

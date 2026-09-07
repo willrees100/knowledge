@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Single-function seam so swapping LLM providers later is a one-line change
 // at the call sites, not a rewrite. Everything provider-specific lives here.
-const MODEL_NAME = "gemini-2.0-flash";
+const MODEL_NAME = "gemini-3.6-flash";
 
 export interface GenerateArgs {
   systemPrompt: string;
