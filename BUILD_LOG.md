@@ -187,7 +187,18 @@ binding. Final state: both `pdf-parse` and `@napi-rs/canvas` stay in `serverExte
 internals need to stay unbundled), with the explicit polyfill handling the DOM-global gap that caused the original
 failure. Verified with a full local re-test of all three formats.
 
-While verifying this fix, live output also surfaced a related citation-linking gap: the model sometimes echoes the
+Verifying the DOMMatrix fix live surfaced a second, different error underneath it once the first one cleared:
+`Cannot find module '.../pdfjs-dist/legacy/build/pdf.worker.mjs'`, thrown from `/var/task/node_modules/...` —
+Vercel's deployment directory — meaning the file genuinely wasn't shipped in the deployed function. `pdfjs-dist`
+loads its worker script via a computed path even for its in-process "fake worker" fallback used outside a browser
+(there's no way to skip needing the file entirely, only whether it runs on a real worker thread or in-process), and
+Vercel's build-time file tracing doesn't follow that dynamic path to know it needs including. Fixed with
+`outputFileTracingIncludes` in `next.config.ts`, explicitly forcing `pdfjs-dist`'s legacy build directory into
+every API route's trace. Confirmed locally that this doesn't change local dev behavior (which never needed it) and
+build/lint stay clean; the live Vercel behavior itself is still pending confirmation after this push, same as the
+DOMMatrix fix was before it was actually verified.
+
+While verifying the DOMMatrix fix, live output also surfaced a related citation-linking gap: the model sometimes echoes the
 corpus's own source-header tag (`[Notes]`, `[Slides]`) as part of a citation — e.g. `([Notes] Week3_Notes.docx,
 Section: ...)` — instead of just the bare filename the system prompt asks for. `lib/citations.tsx`'s regex expected
 a bare filename immediately after `(`, so this variant would silently fail to match any uploaded file and render as

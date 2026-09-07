@@ -12,6 +12,18 @@ const nextConfig: NextConfig = {
   // failing to bundle. Reverted; see BUILD_LOG.md for the full trail and the
   // fix that was actually used: an explicit DOMMatrix polyfill.)
   serverExternalPackages: ["better-sqlite3", "pdf-parse", "@napi-rs/canvas"],
+
+  // pdfjs-dist (used internally by pdf-parse) loads its worker script
+  // (pdf.worker.mjs) via a computed path at runtime, even for the in-process
+  // "fake worker" fallback it uses outside a browser — Vercel's build-time
+  // file tracing doesn't follow that and leaves the file out of the deployed
+  // function, reproduced live as "Cannot find module .../pdf.worker.mjs" at
+  // /var/task/node_modules/pdfjs-dist/.... This explicitly forces it (and the
+  // rest of the legacy build directory it lives in) into every API route's
+  // trace so the file actually ships.
+  outputFileTracingIncludes: {
+    "/api/**/*": ["./node_modules/pdfjs-dist/legacy/build/*.mjs"],
+  },
 };
 
 export default nextConfig;
