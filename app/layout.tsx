@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -25,16 +26,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <header className="border-b border-black/10 dark:border-white/10 px-6 py-3 flex items-center justify-between">
-          <a href="/" className="font-semibold tracking-tight">
+          <Link href="/" className="font-semibold tracking-tight">
             KNOWLEDGE
-          </a>
+          </Link>
           <nav className="text-sm flex gap-4 opacity-80">
-            <a href="/" className="hover:underline">
+            <Link href="/" className="hover:underline">
               Knowledge Bases
-            </a>
-            <a href="/admin" className="hover:underline">
+            </Link>
+            <Link href="/admin" className="hover:underline">
               Stats
-            </a>
+            </Link>
           </nav>
         </header>
         <main className="flex-1">{children}</main>

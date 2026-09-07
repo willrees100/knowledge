@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { FileRow, Folder, KB } from "@/lib/types";
 import { linkifyCitations } from "@/lib/citations";
 
@@ -45,9 +46,9 @@ export default function KbWorkspace({ kb, initialFiles }: Props) {
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
       <div className="mb-2 flex items-center gap-2 text-sm opacity-60">
-        <a href="/" className="hover:underline">
+        <Link href="/" className="hover:underline">
           Knowledge Bases
-        </a>
+        </Link>
         <span>/</span>
       </div>
       <h1 className="text-2xl font-bold mb-1">{kb.name}</h1>

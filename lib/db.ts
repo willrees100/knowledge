@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-import type { Chunk, Folder, FeedbackRow, TestGenerationRow } from "./types";
+import type { Chunk, Folder, FeedbackRow } from "./types";
 
 // MVP persistence: a single local SQLite file, including original file bytes
 // stored as BLOBs so citation-downloads work without a separate object store.
