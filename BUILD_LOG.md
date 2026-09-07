@@ -155,7 +155,33 @@ specifically to surface anything broken before they came back rather than just w
 
 All three fixes were re-verified with a full local run (create KB → upload real DOCX/PPTX/PDF fixtures → confirm
 all three parse successfully → check `/api/stats` on an empty database returns `0`s, not `null`s) and a clean
-`tsc`/`build`/`lint`, then committed and pushed.
+`tsc`/`build`/`lint`, then committed and pushed. Confirmed live afterward too: the previously-500ing DOCX upload
+against the deployed app now succeeds.
+
+## Post-deploy round 3: a live PDF-parsing gap, and a real local build race
+
+Re-tested the live deploy after round 2 landed. DOCX uploads now succeed against the deployed app — but PDF uploads
+still fail there specifically (`"Failed to parse file"`), while working fine locally. This is consistent with the
+round-2 theory: `pdf-parse`'s native-binary dependency (`@napi-rs/canvas`) likely isn't loading correctly under
+Vercel's serverless runtime even with `serverExternalPackages` set. Because of the round-2 lazy-import fix, this
+failure is now contained to PDF files specifically — it no longer takes down the whole upload request — but a
+practice-problems folder that's PDF-only (as the spec's own example is) won't work until this is chased further,
+likely needing real Vercel function log access (not available from this environment) to see the actual thrown
+error rather than guess at it. Improved the upload route's error message to include the real exception text instead
+of a generic "Failed to parse file." string, so the next person with dashboard access can see the real cause in one
+look instead of needing to reproduce it with better logging first.
+
+Separately, a local production build failed transitively with `SqliteError: database is locked` /
+`SQLITE_BUSY` while chasing the above — traced to `lib/db-sqlite.ts` opening the database file (and running WAL
+setup) as a side effect of the module simply being *imported*, which happens for every route during Next's
+"collecting page data" build step, across several parallel workers; two workers opening the same freshly-created
+file at once raced. This didn't affect the app's actual runtime correctness (a rebuild immediately after succeeded,
+and the local end-to-end flow always worked), but it's a real sharp edge for anyone rebuilding on a fresh checkout —
+and, more importantly, the same eager-init pattern could plausibly hit Vercel's own build step too. Fixed by
+making the SQLite backend lazily open the database on first actual use (`getDb()`, memoized) instead of at import
+time, mirroring the pattern `lib/db-postgres.ts`'s `ensureInit()` already used. Verified with three consecutive
+clean `rm -rf .next data && npm run build` runs (previously reproduced on roughly 1-in-2 attempts) plus a full
+local end-to-end re-test.
 
 ## Known tradeoffs under time pressure
 

@@ -12,57 +12,75 @@ import type { Chunk, Folder, FeedbackRow } from "./types";
 const DATA_DIR = process.env.VERCEL ? "/tmp/knowledge-data" : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "knowledge.db");
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Lazy singleton, deliberately not opened at module load. Next.js imports
+// every route module during its build's "collecting page data" step (even
+// for routes that never touch the database, and even across several parallel
+// build workers) — opening the file and running WAL setup as an import-time
+// side effect meant that step could race itself opening the same fresh file
+// from multiple workers at once, which reproduced locally as a transient
+// `SQLITE_BUSY: database is locked` build failure. Deferring all of this to
+// first actual use (mirroring lib/db-postgres.ts's ensureInit() pattern)
+// means importing this module is just a function declaration — no I/O, no
+// race — and the DB only opens when a request actually needs it.
+let db: Database.Database | null = null;
+
+function getDb(): Database.Database {
+  if (db) return db;
+
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  db = new Database(DB_PATH);
+  db.pragma("journal_mode = WAL");
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kbs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      focus TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS files (
+      id TEXT PRIMARY KEY,
+      kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
+      folder TEXT NOT NULL CHECK (folder IN ('notes','slides','practice')),
+      filename TEXT NOT NULL,
+      mimetype TEXT NOT NULL,
+      ext TEXT NOT NULL,
+      content BLOB NOT NULL,
+      chunks_json TEXT NOT NULL,
+      chunk_count INTEGER NOT NULL,
+      char_count INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
+      timestamp TEXT NOT NULL,
+      question TEXT NOT NULL,
+      answer_source TEXT NOT NULL CHECK (answer_source IN ('source','fallback')),
+      thumbs TEXT CHECK (thumbs IN ('up','down') OR thumbs IS NULL)
+    );
+
+    CREATE TABLE IF NOT EXISTS test_generations (
+      id TEXT PRIMARY KEY,
+      kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
+      timestamp TEXT NOT NULL,
+      config_json TEXT NOT NULL,
+      question_count INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_files_kb ON files(kb_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_kb ON feedback(kb_id);
+    CREATE INDEX IF NOT EXISTS idx_tests_kb ON test_generations(kb_id);
+  `);
+
+  return db;
 }
-
-const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS kbs (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    focus TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS files (
-    id TEXT PRIMARY KEY,
-    kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
-    folder TEXT NOT NULL CHECK (folder IN ('notes','slides','practice')),
-    filename TEXT NOT NULL,
-    mimetype TEXT NOT NULL,
-    ext TEXT NOT NULL,
-    content BLOB NOT NULL,
-    chunks_json TEXT NOT NULL,
-    chunk_count INTEGER NOT NULL,
-    char_count INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS feedback (
-    id TEXT PRIMARY KEY,
-    kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
-    timestamp TEXT NOT NULL,
-    question TEXT NOT NULL,
-    answer_source TEXT NOT NULL CHECK (answer_source IN ('source','fallback')),
-    thumbs TEXT CHECK (thumbs IN ('up','down') OR thumbs IS NULL)
-  );
-
-  CREATE TABLE IF NOT EXISTS test_generations (
-    id TEXT PRIMARY KEY,
-    kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
-    timestamp TEXT NOT NULL,
-    config_json TEXT NOT NULL,
-    question_count INTEGER NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_files_kb ON files(kb_id);
-  CREATE INDEX IF NOT EXISTS idx_feedback_kb ON feedback(kb_id);
-  CREATE INDEX IF NOT EXISTS idx_tests_kb ON test_generations(kb_id);
-`);
 
 // Every function is declared async, even though the underlying work is
 // synchronous, so callers can use the exact same `await db.foo()` calling
@@ -70,13 +88,13 @@ db.exec(`
 // actually active. See lib/db.ts.
 
 export async function createKB(input: { id: string; name: string; description: string; focus: string }) {
-  db.prepare(
+  getDb().prepare(
     `INSERT INTO kbs (id, name, description, focus, created_at) VALUES (?, ?, ?, ?, ?)`
   ).run(input.id, input.name, input.description, input.focus, new Date().toISOString());
 }
 
 export async function listKBs() {
-  return db.prepare(`SELECT * FROM kbs ORDER BY created_at DESC`).all() as Array<{
+  return getDb().prepare(`SELECT * FROM kbs ORDER BY created_at DESC`).all() as Array<{
     id: string;
     name: string;
     description: string;
@@ -86,7 +104,7 @@ export async function listKBs() {
 }
 
 export async function getKB(id: string) {
-  return db.prepare(`SELECT * FROM kbs WHERE id = ?`).get(id) as
+  return getDb().prepare(`SELECT * FROM kbs WHERE id = ?`).get(id) as
     | { id: string; name: string; description: string; focus: string; created_at: string }
     | undefined;
 }
@@ -102,7 +120,7 @@ export async function insertFile(input: {
   chunks: Chunk[];
 }) {
   const charCount = input.chunks.reduce((sum, c) => sum + c.text.length, 0);
-  db.prepare(
+  getDb().prepare(
     `INSERT INTO files (id, kb_id, folder, filename, mimetype, ext, content, chunks_json, chunk_count, char_count, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
@@ -121,7 +139,7 @@ export async function insertFile(input: {
 }
 
 export async function listFiles(kbId: string) {
-  return db
+  return getDb()
     .prepare(
       `SELECT id, kb_id, folder, filename, mimetype, ext, chunk_count, char_count, created_at FROM files WHERE kb_id = ? ORDER BY created_at ASC`
     )
@@ -139,17 +157,17 @@ export async function listFiles(kbId: string) {
 }
 
 export async function getFileContent(fileId: string) {
-  return db.prepare(`SELECT filename, mimetype, content FROM files WHERE id = ?`).get(fileId) as
+  return getDb().prepare(`SELECT filename, mimetype, content FROM files WHERE id = ?`).get(fileId) as
     | { filename: string; mimetype: string; content: Buffer }
     | undefined;
 }
 
 export async function getFileChunks(kbId: string, folder?: Folder) {
   const rows = folder
-    ? db
+    ? getDb()
         .prepare(`SELECT filename, folder, chunks_json FROM files WHERE kb_id = ? AND folder = ?`)
         .all(kbId, folder)
-    : db.prepare(`SELECT filename, folder, chunks_json FROM files WHERE kb_id = ?`).all(kbId);
+    : getDb().prepare(`SELECT filename, folder, chunks_json FROM files WHERE kb_id = ?`).all(kbId);
   return (rows as Array<{ filename: string; folder: Folder; chunks_json: string }>).map((r) => ({
     filename: r.filename,
     folder: r.folder,
@@ -163,18 +181,18 @@ export async function insertFeedback(input: {
   question: string;
   answer_source: "source" | "fallback";
 }) {
-  db.prepare(
+  getDb().prepare(
     `INSERT INTO feedback (id, kb_id, timestamp, question, answer_source, thumbs) VALUES (?, ?, ?, ?, ?, NULL)`
   ).run(input.id, input.kb_id, new Date().toISOString(), input.question, input.answer_source);
 }
 
 export async function setFeedbackThumbs(id: string, thumbs: "up" | "down") {
-  const result = db.prepare(`UPDATE feedback SET thumbs = ? WHERE id = ?`).run(thumbs, id);
+  const result = getDb().prepare(`UPDATE feedback SET thumbs = ? WHERE id = ?`).run(thumbs, id);
   return result.changes > 0;
 }
 
 export async function listFeedbackForKB(kbId: string) {
-  return db
+  return getDb()
     .prepare(`SELECT * FROM feedback WHERE kb_id = ? ORDER BY timestamp DESC`)
     .all(kbId) as FeedbackRow[];
 }
@@ -185,13 +203,13 @@ export async function insertTestGeneration(input: {
   config: unknown;
   question_count: number;
 }) {
-  db.prepare(
+  getDb().prepare(
     `INSERT INTO test_generations (id, kb_id, timestamp, config_json, question_count) VALUES (?, ?, ?, ?, ?)`
   ).run(input.id, input.kb_id, new Date().toISOString(), JSON.stringify(input.config), input.question_count);
 }
 
 export async function getStats() {
-  const totals = db
+  const totals = getDb()
     .prepare(
       `SELECT
         COUNT(*) as total_questions,
@@ -211,11 +229,11 @@ export async function getStats() {
     thumbs_unrated: number;
   };
 
-  const testTotals = db
+  const testTotals = getDb()
     .prepare(`SELECT COUNT(*) as total_tests, COALESCE(SUM(question_count),0) as total_questions_generated FROM test_generations`)
     .get() as { total_tests: number; total_questions_generated: number };
 
-  const perKB = db
+  const perKB = getDb()
     .prepare(
       `SELECT
         kbs.id, kbs.name,
@@ -229,7 +247,7 @@ export async function getStats() {
     )
     .all() as Array<{ id: string; name: string; questions_asked: number; thumbs_up: number; thumbs_down: number }>;
 
-  const recentFeedback = db
+  const recentFeedback = getDb()
     .prepare(
       `SELECT feedback.timestamp, feedback.question, feedback.answer_source, feedback.thumbs, kbs.name as kb_name
        FROM feedback JOIN kbs ON kbs.id = feedback.kb_id

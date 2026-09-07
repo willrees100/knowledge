@@ -56,10 +56,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       results.push({ filename: file.name, ok: true, chunkCount: chunks.length });
     } catch (err) {
       console.error(`Failed to parse ${file.name}:`, err);
+      const detail = err instanceof Error ? err.message : String(err);
       results.push({
         filename: file.name,
         ok: false,
-        error: err instanceof UnsupportedFileError ? err.message : "Failed to parse file.",
+        error: err instanceof UnsupportedFileError ? detail : `Failed to parse file: ${detail}`,
       });
     }
   }
