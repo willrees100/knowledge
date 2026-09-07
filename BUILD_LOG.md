@@ -122,6 +122,41 @@ This was caught and fixed by testing the real deployed app, not by reasoning abo
 abstract — worth remembering that a documented caveat ("may not persist") can understate an actual hard failure
 ("doesn't work at all") until someone clicks through the real flow.
 
+## Post-deploy round 2: while the user was away, found and fixed three more real bugs
+
+Ran checks against the live deployed app without the user present (they'd stepped away before attaching Postgres),
+specifically to surface anything broken before they came back rather than just waiting.
+
+1. **File uploads 500'd on the live deploy — for every format, not just PDF.** `curl`ing a plain DOCX upload against
+   the live app returned a bare `500` with an empty body, 3/3 times. Traced to `lib/parse/index.ts` statically
+   importing all three format parsers (`pdf.ts`, `docx.ts`, `pptx.ts`) at the top of the file — `pdf-parse` pulls in
+   `@napi-rs/canvas`, a native-binary dependency, and if that fails to load correctly in Vercel's serverless build
+   (a known class of failure for native addons under bundlers), the *whole module* fails to import, which took down
+   DOCX and PPTX uploads too, since just importing `lib/parse/index.ts` at all would throw before `extractChunks`
+   ever ran. Fixed by making each parser's import lazy (`await import("./pdf")` etc., inside the switch case) so a
+   DOCX/PPTX upload never touches the PDF parser's dependency graph — and as a side effect, a PDF-specific native
+   module failure is now caught by the per-file try/catch already in the upload route instead of crashing the whole
+   request. Also added `@napi-rs/canvas` to `next.config.ts`'s `serverExternalPackages` as a further defensive
+   measure. Not fully re-verified against the live PDF upload path specifically (that requires the Postgres step to
+   be done first to test reliably, since KB creation and upload need to land on the same instance) — the DOCX/PPTX
+   fix is confirmed by the reproduction above and a full local re-test of all three formats.
+2. **`/admin` stats showed `null` instead of `0` on an empty database.** SQL's `SUM()` over zero matching rows
+   returns `NULL`, not `0` — confirmed live by hitting `/api/stats` against a fresh KB with no feedback yet. The
+   Postgres backend already wrapped every `SUM()` in `COALESCE(...,0)` (written that way from the start, following
+   the same instinct that led to the `::int` bigint-cast fix above); the original SQLite backend's equivalent query
+   did not, which only showed up once a genuinely empty table was actually queried against the live app rather than
+   the local dev testing, which always had at least one feedback row by the time stats were checked. Fixed by adding
+   the same `COALESCE` wrapping to `lib/db-sqlite.ts`.
+3. **`setFeedbackThumbs` would have silently reported "not found" on every successful rating once Postgres was
+   live** — caught by reading `@neondatabase/serverless`'s own type declarations rather than assuming: its `sql`
+   tag returns only result *rows* by default, and a plain `UPDATE` with no `RETURNING` clause returns none
+   regardless of whether it matched anything. Fixed by adding `RETURNING id`. (This one didn't reproduce yet on the
+   live site, since Postgres isn't attached — caught by code review before it could bite, not by a live failure.)
+
+All three fixes were re-verified with a full local run (create KB → upload real DOCX/PPTX/PDF fixtures → confirm
+all three parse successfully → check `/api/stats` on an empty database returns `0`s, not `null`s) and a clean
+`tsc`/`build`/`lint`, then committed and pushed.
+
 ## Known tradeoffs under time pressure
 
 - No automated test suite — verification above was manual/scripted against the real running app, not unit tests,

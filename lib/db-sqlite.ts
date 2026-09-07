@@ -195,11 +195,11 @@ export async function getStats() {
     .prepare(
       `SELECT
         COUNT(*) as total_questions,
-        SUM(CASE WHEN answer_source = 'source' THEN 1 ELSE 0 END) as source_answers,
-        SUM(CASE WHEN answer_source = 'fallback' THEN 1 ELSE 0 END) as fallback_answers,
-        SUM(CASE WHEN thumbs = 'up' THEN 1 ELSE 0 END) as thumbs_up,
-        SUM(CASE WHEN thumbs = 'down' THEN 1 ELSE 0 END) as thumbs_down,
-        SUM(CASE WHEN thumbs IS NULL THEN 1 ELSE 0 END) as thumbs_unrated
+        COALESCE(SUM(CASE WHEN answer_source = 'source' THEN 1 ELSE 0 END),0) as source_answers,
+        COALESCE(SUM(CASE WHEN answer_source = 'fallback' THEN 1 ELSE 0 END),0) as fallback_answers,
+        COALESCE(SUM(CASE WHEN thumbs = 'up' THEN 1 ELSE 0 END),0) as thumbs_up,
+        COALESCE(SUM(CASE WHEN thumbs = 'down' THEN 1 ELSE 0 END),0) as thumbs_down,
+        COALESCE(SUM(CASE WHEN thumbs IS NULL THEN 1 ELSE 0 END),0) as thumbs_unrated
       FROM feedback`
     )
     .get() as {
@@ -220,8 +220,8 @@ export async function getStats() {
       `SELECT
         kbs.id, kbs.name,
         COUNT(feedback.id) as questions_asked,
-        SUM(CASE WHEN feedback.thumbs = 'up' THEN 1 ELSE 0 END) as thumbs_up,
-        SUM(CASE WHEN feedback.thumbs = 'down' THEN 1 ELSE 0 END) as thumbs_down
+        COALESCE(SUM(CASE WHEN feedback.thumbs = 'up' THEN 1 ELSE 0 END),0) as thumbs_up,
+        COALESCE(SUM(CASE WHEN feedback.thumbs = 'down' THEN 1 ELSE 0 END),0) as thumbs_down
       FROM kbs
       LEFT JOIN feedback ON feedback.kb_id = kbs.id
       GROUP BY kbs.id
