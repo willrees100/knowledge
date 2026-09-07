@@ -1,36 +1,106 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KNOWLEDGE
 
-## Getting Started
+A student turns their own class materials into a source-grounded study assistant. Upload your notes, slides, and
+practice problems for one class; ask questions that are answered **only** from what you uploaded, with clickable
+citations; generate a practice test whose difficulty is anchored to your real practice problems, not guessed.
 
-First, run the development server:
+**Live URL:** _fill in after deploying — see "Deploying" below_
+**Repo:** _fill in after pushing to GitHub — see "Pushing to GitHub" below_
+
+## What it does
+
+1. **Create a knowledge base (KB)** for one class — name it, describe what it covers, and note anything you want
+   the assistant to focus on. That setup form is folded into the assistant's system prompt; it steers tone and
+   scope, it isn't just decorative.
+2. **Upload materials** into three folders: Notes (PDF/DOCX), Slides (PDF/PPTX), Practice Problems (PDF/DOCX/PPTX).
+   Typed text only — no OCR.
+3. **Ask questions.** The assistant answers strictly from your uploaded material, with inline citations like
+   `(Week3Notes.docx, Section: Elasticity)` or `(Lecture4Slides.pptx, Slide 4)`. Each citation is a clickable link
+   that opens the original file so you can find the exact spot yourself. If the material doesn't contain the
+   answer, it says so explicitly instead of guessing.
+4. **Generate a practice test.** Tell it how many questions, which sections, and what to focus on. The test's
+   format and difficulty are anchored to your actual uploaded practice problems (notes/slides only add topic
+   coverage, never style or difficulty). It refuses to generate anything if you haven't uploaded practice problems.
+5. **Every answer gets a thumbs up/down**, and every Q&A + test generation is logged with a timestamp. See
+   `/admin` for the running totals — this is the evidence mechanism for `HYPOTHESIS.md`'s decision rule.
+
+## Stack
+
+- Next.js 16 (App Router), TypeScript, Tailwind — single repo, deployable to Vercel's free tier.
+- Google Gemini (`gemini-3.6-flash`) via `lib/llm.ts`, a single `generate()` function so swapping providers is a
+  one-line change, not a rewrite.
+- No vector DB / no embeddings. Gemini Flash's context window is large enough to include a whole class's extracted
+  text directly in the prompt, tagged by source and page/slide/section — a deliberate MVP simplification (see
+  `BUILD_LOG.md`). A soft ~150K-token budget truncates gracefully and flags it in the UI if a class's material is
+  unusually large.
+- SQLite (`better-sqlite3`), one local file, storing KB metadata, extracted text, **and the original uploaded file
+  bytes** (so citation downloads work without a separate object store), plus the feedback and test-generation logs.
+- File parsing: `pdf-parse` v2 (native per-page text), a hand-rolled PPTX extractor over the raw slide XML (native
+  per-slide text — no extra dependency needed), `mammoth` for DOCX (heading-based section chunking).
+- No auth. Anyone with a KB's URL can use it — acceptable for this MVP.
+
+## Setup
 
 ```bash
+cd knowledge
+npm install
+cp .env.example .env.local   # then paste your Gemini API key into .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Get a free Gemini API key at https://aistudio.google.com/apikey (no credit card required).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Visit `http://localhost:3000`, create a knowledge base, and upload some files.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploying
 
-## Learn More
+### Push to GitHub
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cd knowledge
+gh repo create knowledge --public --source=. --remote=origin --push
+# or, without gh:
+# git remote add origin https://github.com/<you>/knowledge.git
+# git push -u origin main
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Deploy to Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx vercel login
+npx vercel                      # first deploy, follow the prompts
+npx vercel env add GEMINI_API_KEY production   # paste your key when prompted
+npx vercel --prod
+```
 
-## Deploy on Vercel
+Or via the Vercel dashboard: import the GitHub repo, then under Project → Settings → Environment Variables add
+`GEMINI_API_KEY`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Known limitations (read before grading/demoing)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **DOCX has no reliable native page number.** Word/DOCX pagination depends entirely on the reader rendering it —
+  the file format itself doesn't store page breaks the way PDF does. Rather than fabricate a page number, DOCX
+  files are chunked by heading (`Heading 1`–`3` styles) and cited as `Section: <heading text>`; a document with no
+  headings falls back to fixed-size ~500-word chunks cited as `Section N`. This is a real, intentional constraint,
+  not a bug.
+- **Context-window ceiling.** All of a KB's extracted text is included directly in every prompt (no RAG/embedding
+  pipeline — see `BUILD_LOG.md` for why). Past a rough ~150K-token budget, material is truncated and the UI shows
+  a note on that answer/test. For a single class's worth of notes/slides/practice sets this budget is generous,
+  but a KB with an unusually large amount of material could hit it.
+- **Vercel's serverless filesystem is ephemeral and not shared across instances.** SQLite (including the file
+  blobs) lives on local disk, which is reliable when you run the app yourself (`npm run dev`, or any host with a
+  persistent disk) but is **not guaranteed to persist writes across requests on Vercel's default serverless
+  deploy**. For local testing tonight this is a non-issue. For a fully reliable *deployed* demo, the fastest fix
+  is to swap `lib/db.ts` for a hosted Postgres connection (e.g. Vercel's one-click Neon integration) before the
+  live demo matters most — flagged here rather than silently shipped as if it were solved.
+- **No auth, single class per KB, no OCR for scanned documents, no user accounts.** All explicitly out of scope
+  for this MVP by design — see the original build spec.
+- **Vercel's free-tier request body limit (4.5MB)** can reject very large slide decks with embedded images/video.
+  Split large files or upgrade the Vercel plan if this bites during grading.
+
+## Deliverables
+
+- `HYPOTHESIS.md` — the precommitted hypothesis and decision rule.
+- `VENTURE_ECONOMICS.md` — pricing, per-question cost, and market-size sketch.
+- `BUILD_LOG.md` — what was built, key decisions, and tradeoffs, written as it happened.
+- `REVISION_RECEIPT.md` — slot for real usage findings and what changed as a result.
