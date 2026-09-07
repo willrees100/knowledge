@@ -6,8 +6,17 @@ import type { Chunk, Folder, FeedbackRow } from "./types";
 // MVP persistence: a single local SQLite file, including original file bytes
 // stored as BLOBs so citation-downloads work without a separate object store.
 // See BUILD_LOG.md for why this was chosen over Postgres, and the honest
-// caveat about Vercel's ephemeral serverless filesystem.
-const DATA_DIR = path.join(process.cwd(), "data");
+// caveat about Vercel's serverless filesystem.
+//
+// Vercel's deployed filesystem is read-only outside /tmp — writing to
+// process.cwd() there throws immediately (confirmed live: it 500'd every
+// route that touched the DB). /tmp IS writable there, so we use it when
+// running on Vercel (VERCEL is set by their platform), and the project-local
+// `data/` folder otherwise so local dev keeps an inspectable, stable file.
+// /tmp is still not shared across concurrent serverless instances and can be
+// wiped between cold starts — real limits, documented in README.md — but this
+// at minimum makes the deployed app function instead of erroring on every load.
+const DATA_DIR = process.env.VERCEL ? "/tmp/knowledge-data" : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "knowledge.db");
 
 if (!fs.existsSync(DATA_DIR)) {
