@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { createKB, listKBs } from "@/lib/db";
 
 export async function GET() {
-  const kbs = listKBs();
+  const kbs = await listKBs();
   return NextResponse.json({ kbs });
 }
 
@@ -18,6 +18,6 @@ export async function POST(req: NextRequest) {
   }
 
   const id = randomUUID();
-  createKB({ id, name, description, focus });
+  await createKB({ id, name, description, focus });
   return NextResponse.json({ id });
 }

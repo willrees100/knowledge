@@ -14,7 +14,7 @@ Number the questions. After all questions, include an "Answer Key" section with 
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: kbId } = await params;
-  const kb = getKB(kbId);
+  const kb = await getKB(kbId);
   if (!kb) {
     return NextResponse.json({ error: "Knowledge base not found." }, { status: 404 });
   }
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const sections = (body.sections ?? "").trim();
   const focus = (body.focus ?? "").trim();
 
-  const practiceFiles = getFileChunks(kbId, "practice");
+  const practiceFiles = await getFileChunks(kbId, "practice");
   if (practiceFiles.length === 0) {
     return NextResponse.json(
       {
@@ -35,7 +35,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const contextFiles = [...getFileChunks(kbId, "notes"), ...getFileChunks(kbId, "slides")];
+  const [notesFiles, slidesFiles] = await Promise.all([getFileChunks(kbId, "notes"), getFileChunks(kbId, "slides")]);
+  const contextFiles = [...notesFiles, ...slidesFiles];
   const { text: corpus, truncated } = buildCorpus(practiceFiles, contextFiles);
 
   const systemPrompt = [
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  insertTestGeneration({
+  await insertTestGeneration({
     id: randomUUID(),
     kb_id: kbId,
     config: { numQuestions, sections, focus },

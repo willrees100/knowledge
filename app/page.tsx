@@ -3,8 +3,9 @@ import { listKBs, listFiles } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default function HomePage() {
-  const kbs = listKBs();
+export default async function HomePage() {
+  const kbs = await listKBs();
+  const fileCounts = await Promise.all(kbs.map((kb) => listFiles(kb.id).then((files) => files.length)));
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
@@ -25,8 +26,8 @@ export default function HomePage() {
         <p className="opacity-60 text-sm">No knowledge bases yet. Create one to get started.</p>
       ) : (
         <ul className="space-y-3">
-          {kbs.map((kb) => {
-            const fileCount = listFiles(kb.id).length;
+          {kbs.map((kb, i) => {
+            const fileCount = fileCounts[i];
             return (
               <li key={kb.id}>
                 <Link

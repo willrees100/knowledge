@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@neondatabase/serverless": "^1.1.0",
     "better-sqlite3": "^13.0.3",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.2",

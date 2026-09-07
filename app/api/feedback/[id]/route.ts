@@ -8,7 +8,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (thumbs !== "up" && thumbs !== "down") {
     return NextResponse.json({ error: "thumbs must be 'up' or 'down'." }, { status: 400 });
   }
-  const ok = setFeedbackThumbs(id, thumbs);
+  const ok = await setFeedbackThumbs(id, thumbs);
   if (!ok) {
     return NextResponse.json({ error: "Feedback entry not found." }, { status: 404 });
   }

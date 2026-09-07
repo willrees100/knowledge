@@ -3,7 +3,7 @@ import { getFileContent } from "@/lib/db";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ fileId: string }> }) {
   const { fileId } = await params;
-  const file = getFileContent(fileId);
+  const file = await getFileContent(fileId);
   if (!file) {
     return NextResponse.json({ error: "File not found." }, { status: 404 });
   }

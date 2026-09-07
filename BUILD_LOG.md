@@ -91,6 +91,37 @@ Ran a full real pass against the live local dev server, not a reimplementation:
 9. Confirmed an unsupported file type (`.txt`) is rejected with a clear message instead of silently mis-parsing.
 10. `npx tsc --noEmit` and `npm run build` both pass clean.
 
+## Post-deploy: SQLite doesn't work on Vercel at all, not just "may not persist"
+
+The original build log (and README's known-limitations section) flagged Vercel's serverless filesystem as a soft
+risk — "writes might not persist across requests." Once the user actually deployed and tested it, that turned out
+to understate the problem: the very first real interaction (create a KB, click into it) 500'd, then after an
+initial fix (pointing the SQLite file at `/tmp`, which Vercel *does* allow writing to) still 404'd — creating a KB
+succeeded, but the immediately-following page load couldn't find it, because the two requests ran on different
+serverless instances with no shared disk between them. This isn't an edge case that shows up under heavy
+concurrency; it reproduced on the second request, every time.
+
+**Fix:** `lib/db.ts` became a small dispatcher that picks a backend based on environment: `lib/db-sqlite.ts`
+(the original implementation, unchanged, used for local dev) or a new `lib/db-postgres.ts` using
+`@neondatabase/serverless`, selected automatically once a Postgres connection string (`DATABASE_URL`/`POSTGRES_URL`,
+set automatically by Vercel's Storage → Neon integration) is present in the environment. Every function in the
+public `lib/db.ts` API became `async` (trivial for the SQLite side, since its work was already synchronous — just
+wrapped) so both backends share one identical calling convention and no call site needs to know which is active.
+
+One real Postgres-specific gotcha caught before it shipped: Postgres's `COUNT`/`SUM` return `bigint`, which
+node/neon drivers hand back as strings by default (to avoid silent precision loss on huge counts) — left unhandled,
+`/admin`'s `thumbs_up + thumbs_down` would have silently become string concatenation ("3" + "0" = "30") instead of
+addition once running against Postgres. Fixed with explicit `::int` casts in every aggregate query in
+`lib/db-postgres.ts`, keeping its returned shape numeric like the SQLite backend's.
+
+`require()` (not `import`) is used in the `lib/db.ts` dispatcher specifically so the *unused* backend's module code
+never executes — `lib/db-postgres.ts` constructs its Neon client at module load and assumes a connection string
+exists, which would throw immediately in local dev if it were loaded unconditionally.
+
+This was caught and fixed by testing the real deployed app, not by reasoning about Vercel's architecture in the
+abstract — worth remembering that a documented caveat ("may not persist") can understate an actual hard failure
+("doesn't work at all") until someone clicks through the real flow.
+
 ## Known tradeoffs under time pressure
 
 - No automated test suite — verification above was manual/scripted against the real running app, not unit tests,

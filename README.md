@@ -4,8 +4,8 @@ A student turns their own class materials into a source-grounded study assistant
 practice problems for one class; ask questions that are answered **only** from what you uploaded, with clickable
 citations; generate a practice test whose difficulty is anchored to your real practice problems, not guessed.
 
-**Live URL:** _fill in after deploying — see "Deploying" below_
-**Repo:** _fill in after pushing to GitHub — see "Pushing to GitHub" below_
+**Live URL:** https://knowledge-nine-sepia.vercel.app/ — _requires a Postgres database attached, see "Deploying" below_
+**Repo:** https://github.com/willrees100/knowledge
 
 ## What it does
 
@@ -33,8 +33,11 @@ citations; generate a practice test whose difficulty is anchored to your real pr
   text directly in the prompt, tagged by source and page/slide/section — a deliberate MVP simplification (see
   `BUILD_LOG.md`). A soft ~150K-token budget truncates gracefully and flags it in the UI if a class's material is
   unusually large.
-- SQLite (`better-sqlite3`), one local file, storing KB metadata, extracted text, **and the original uploaded file
-  bytes** (so citation downloads work without a separate object store), plus the feedback and test-generation logs.
+- Storage: `lib/db.ts` dispatches between two backends behind one identical async API. Locally (and on any deploy
+  with no Postgres attached) it's SQLite (`better-sqlite3`), one local file storing KB metadata, extracted text,
+  **and the original uploaded file bytes** (so citation downloads work without a separate object store), plus the
+  feedback and test-generation logs. **On Vercel, a real Postgres database (e.g. Neon) is required** — see
+  "Deploying" and "Known limitations" below for why file-based storage doesn't work there at all.
 - File parsing: `pdf-parse` v2 (native per-page text), a hand-rolled PPTX extractor over the raw slide XML (native
   per-slide text — no extra dependency needed), `mammoth` for DOCX (heading-based section chunking).
 - No auth. Anyone with a KB's URL can use it — acceptable for this MVP.
@@ -76,6 +79,23 @@ npx vercel --prod
 Or via the Vercel dashboard: import the GitHub repo, then under Project → Settings → Environment Variables add
 `GEMINI_API_KEY`.
 
+### Attach a Postgres database (required for the deployed app to work at all)
+
+Vercel's deployed serverless functions run on separate, short-lived instances with no shared writable disk — a
+file (SQLite included) written by one request is often invisible to the very next request. Confirmed live: creating
+a knowledge base succeeded, but loading its page immediately after 404'd, because the two requests landed on
+different instances. `lib/db.ts` already supports Postgres (`lib/db-postgres.ts`, via `@neondatabase/serverless`)
+and switches to it automatically once a connection string is present — you just need to attach one:
+
+1. In the Vercel dashboard, open the project → **Storage** tab → **Create Database** → choose **Neon** (Postgres,
+   free tier) → follow the prompts to create and connect it to this project.
+2. Vercel automatically sets `DATABASE_URL` (or `POSTGRES_URL`) as an environment variable — no copying a
+   connection string by hand.
+3. Redeploy (Vercel does this automatically on the next push, or trigger one from the dashboard). The app will
+   create its tables on first request against the new database.
+
+Until this is done, the deployed app will error or silently lose data between requests — this step isn't optional.
+
 ## Known limitations (read before grading/demoing)
 
 - **DOCX has no reliable native page number.** Word/DOCX pagination depends entirely on the reader rendering it —
@@ -87,12 +107,12 @@ Or via the Vercel dashboard: import the GitHub repo, then under Project → Sett
   pipeline — see `BUILD_LOG.md` for why). Past a rough ~150K-token budget, material is truncated and the UI shows
   a note on that answer/test. For a single class's worth of notes/slides/practice sets this budget is generous,
   but a KB with an unusually large amount of material could hit it.
-- **Vercel's serverless filesystem is ephemeral and not shared across instances.** SQLite (including the file
-  blobs) lives on local disk, which is reliable when you run the app yourself (`npm run dev`, or any host with a
-  persistent disk) but is **not guaranteed to persist writes across requests on Vercel's default serverless
-  deploy**. For local testing tonight this is a non-issue. For a fully reliable *deployed* demo, the fastest fix
-  is to swap `lib/db.ts` for a hosted Postgres connection (e.g. Vercel's one-click Neon integration) before the
-  live demo matters most — flagged here rather than silently shipped as if it were solved.
+- **Vercel's serverless filesystem is not shared across instances — file-based storage does not work there at
+  all.** This was caught live, not just reasoned about: creating a knowledge base against the deployed app
+  succeeded, but loading its page immediately after returned a 404, because the two requests ran on different
+  instances with no shared disk. The fix (already shipped): `lib/db.ts` uses a real Postgres database on Vercel
+  instead of SQLite, switching automatically once one is attached — see "Attach a Postgres database" above. This
+  is not optional for the deployed app; local dev (`npm run dev`) is unaffected and keeps using SQLite.
 - **No auth, single class per KB, no OCR for scanned documents, no user accounts.** All explicitly out of scope
   for this MVP by design — see the original build spec.
 - **Vercel's free-tier request body limit (4.5MB)** can reject very large slide decks with embedded images/video.

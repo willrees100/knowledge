@@ -7,8 +7,8 @@ function pct(n: number, d: number): string {
   return `${Math.round((n / d) * 100)}%`;
 }
 
-export default function AdminPage() {
-  const { totals, testTotals, perKB, recentFeedback } = getStats();
+export default async function AdminPage() {
+  const { totals, testTotals, perKB, recentFeedback } = await getStats();
   const rated = totals.thumbs_up + totals.thumbs_down;
 
   return (

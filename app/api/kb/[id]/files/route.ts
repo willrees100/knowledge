@@ -8,7 +8,7 @@ const ALLOWED_FOLDERS: Folder[] = ["notes", "slides", "practice"];
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: kbId } = await params;
-  const kb = getKB(kbId);
+  const kb = await getKB(kbId);
   if (!kb) {
     return NextResponse.json({ error: "Knowledge base not found." }, { status: 404 });
   }
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         continue;
       }
 
-      insertFile({
+      await insertFile({
         id: randomUUID(),
         kb_id: kbId,
         folder: folder as Folder,

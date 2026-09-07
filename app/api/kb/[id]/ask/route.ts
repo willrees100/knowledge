@@ -11,7 +11,7 @@ Cite sources inline using EXACTLY this format: (exact-filename.ext, Label) — f
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: kbId } = await params;
-  const kb = getKB(kbId);
+  const kb = await getKB(kbId);
   if (!kb) {
     return NextResponse.json({ error: "Knowledge base not found." }, { status: 404 });
   }
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Question is required." }, { status: 400 });
   }
 
-  const allFiles = getFileChunks(kbId);
+  const allFiles = await getFileChunks(kbId);
   if (allFiles.length === 0) {
     return NextResponse.json({
       answer: FALLBACK_ANSWER,
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const isFallback = answer.trim() === FALLBACK_ANSWER;
   const feedbackId = randomUUID();
-  insertFeedback({
+  await insertFeedback({
     id: feedbackId,
     kb_id: kbId,
     question,

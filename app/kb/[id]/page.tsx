@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic";
 
 export default async function KbPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const kb = getKB(id);
+  const kb = await getKB(id);
   if (!kb) notFound();
-  const files = listFiles(id);
+  const files = await listFiles(id);
 
   return <KbWorkspace kb={kb} initialFiles={files} />;
 }
