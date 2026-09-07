@@ -98,15 +98,6 @@ Until this is done, the deployed app will error or silently lose data between re
 
 ## Known limitations (read before grading/demoing)
 
-- **PDF uploads currently fail on the live Vercel deployment specifically** (DOCX and PPTX both work there).
-  Confirmed live, not theoretical: DOCX uploads against the deployed app succeed; the identical upload flow with a
-  PDF returns `"Failed to parse file: ..."`. All three formats work correctly in local dev (`npm run dev`). The
-  likely cause is `pdf-parse`'s native-binary dependency (`@napi-rs/canvas`) not loading correctly under Vercel's
-  serverless runtime, but confirming that needs real Vercel function log access, which wasn't available while
-  building this. **If your Practice Problems folder is PDF-only, practice-test generation won't work on the live
-  deploy until this is chased further** — use DOCX/PPTX for practice problems in the meantime, or check Vercel's
-  function logs for the real error behind `/api/kb/[id]/files` and report back.
-
 - **DOCX has no reliable native page number.** Word/DOCX pagination depends entirely on the reader rendering it —
   the file format itself doesn't store page breaks the way PDF does. Rather than fabricate a page number, DOCX
   files are chunked by heading (`Heading 1`–`3` styles) and cited as `Section: <heading text>`; a document with no

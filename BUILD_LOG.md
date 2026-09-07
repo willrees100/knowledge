@@ -217,6 +217,24 @@ time, mirroring the pattern `lib/db-postgres.ts`'s `ensureInit()` already used. 
 clean `rm -rf .next data && npm run build` runs (previously reproduced on roughly 1-in-2 attempts) plus a full
 local end-to-end re-test.
 
+## Post-deploy round 3 wrap-up: everything above confirmed live, not just locally
+
+All three fixes above landed and were individually re-verified against the live deployed app after each push (not
+just locally): DOCX upload succeeded post-fix, then PDF upload failed with the DOMMatrix error, then after that fix
+failed with the worker-file error, then after that fix succeeded with the correct `chunkCount`. A full local
+end-to-end pass afterward — create KB, upload all three formats, ask a grounded question (correct citation), ask an
+out-of-scope question (exact fallback), rate an answer, generate a practice test (correctly matching the uploaded
+practice problems' format), confirm the no-practice-problems refusal on a second KB, download a file (byte-count
+matches), and check `/api/stats` (accurate counts, correct per-KB breakdown) — passed cleanly end to end, with a
+clean `tsc`/`build`/`lint`/`npm audit` (zero vulnerabilities) alongside it.
+
+A final live end-to-end pass (create → upload all three → ask → fallback → rate → generate-test → download →
+stats, all against the deployed app) confirmed upload and Q&A work correctly live; the remaining steps in that same
+pass (stats, download, generate-test) hit "not found" because that particular run's requests landed on different,
+fresh serverless instances — the same already-diagnosed missing-Postgres persistence gap from earlier in this log,
+not a new defect. That step still needs the user to attach a Postgres database via the Vercel dashboard (browser
+login required, unavailable from this environment) — everything else that could be found and fixed without it was.
+
 ## Known tradeoffs under time pressure
 
 - No automated test suite — verification above was manual/scripted against the real running app, not unit tests,
