@@ -30,6 +30,7 @@ const backend: DbBackend = usePostgres ? require("./db-postgres") : require("./d
 export const createKB = backend.createKB;
 export const listKBs = backend.listKBs;
 export const getKB = backend.getKB;
+export const deleteKB = backend.deleteKB;
 export const insertFile = backend.insertFile;
 export const listFiles = backend.listFiles;
 export const getFileContent = backend.getFileContent;

@@ -33,6 +33,12 @@ function getDb(): Database.Database {
 
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
+  // SQLite does not enforce foreign keys (and therefore ON DELETE CASCADE,
+  // used by deleteKB below) unless this is explicitly turned on — it's off
+  // by default, unlike Postgres where FK constraints are always enforced.
+  // Without this, deleting a KB here would silently leave its files/feedback/
+  // test_generations rows orphaned instead of actually cleaning them up.
+  db.pragma("foreign_keys = ON");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS kbs (
@@ -107,6 +113,14 @@ export async function getKB(id: string) {
   return getDb().prepare(`SELECT * FROM kbs WHERE id = ?`).get(id) as
     | { id: string; name: string; description: string; focus: string; created_at: string }
     | undefined;
+}
+
+export async function deleteKB(id: string) {
+  // Relies on ON DELETE CASCADE (files/feedback/test_generations all
+  // reference kbs.id) — see the `foreign_keys = ON` pragma above for why
+  // that actually takes effect here.
+  const result = getDb().prepare(`DELETE FROM kbs WHERE id = ?`).run(id);
+  return result.changes > 0;
 }
 
 export async function insertFile(input: {

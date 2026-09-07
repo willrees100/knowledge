@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listKBs, listFiles } from "@/lib/db";
+import DeleteKbButton from "./DeleteKbButton";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +30,11 @@ export default async function HomePage() {
           {kbs.map((kb, i) => {
             const fileCount = fileCounts[i];
             return (
-              <li key={kb.id}>
-                <Link
-                  href={`/kb/${kb.id}`}
-                  className="block border border-black/10 dark:border-white/15 rounded-lg px-4 py-3 hover:border-black/30 dark:hover:border-white/40 transition-colors"
-                >
+              <li
+                key={kb.id}
+                className="flex items-stretch gap-2 border border-black/10 dark:border-white/15 rounded-lg hover:border-black/30 dark:hover:border-white/40 transition-colors"
+              >
+                <Link href={`/kb/${kb.id}`} className="flex-1 min-w-0 px-4 py-3">
                   <div className="font-semibold">{kb.name}</div>
                   {kb.description && <div className="text-sm opacity-70 mt-0.5">{kb.description}</div>}
                   <div className="text-xs opacity-50 mt-1">
@@ -41,6 +42,9 @@ export default async function HomePage() {
                     {new Date(kb.created_at).toLocaleDateString()}
                   </div>
                 </Link>
+                <div className="flex items-center pr-2">
+                  <DeleteKbButton kbId={kb.id} kbName={kb.name} />
+                </div>
               </li>
             );
           })}

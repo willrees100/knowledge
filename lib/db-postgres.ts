@@ -92,6 +92,14 @@ export async function getKB(id: string) {
   return (rows as unknown as Array<{ id: string; name: string; description: string; focus: string; created_at: string }>)[0];
 }
 
+export async function deleteKB(id: string) {
+  await ensureInit();
+  // Postgres enforces FK constraints (files/feedback/test_generations all
+  // reference kbs.id ON DELETE CASCADE) by default, unlike SQLite.
+  const rows = await sql`DELETE FROM kbs WHERE id = ${id} RETURNING id`;
+  return (rows as unknown as Array<{ id: string }>).length > 0;
+}
+
 export async function insertFile(input: {
   id: string;
   kb_id: string;
