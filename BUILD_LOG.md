@@ -171,6 +171,29 @@ error rather than guess at it. Improved the upload route's error message to incl
 of a generic "Failed to parse file." string, so the next person with dashboard access can see the real cause in one
 look instead of needing to reproduce it with better logging first.
 
+**Root cause found and fixed** (thanks to the improved error message above making it visible without dashboard log
+access): `ReferenceError: DOMMatrix is not defined`, thrown while `pdf-parse`'s own module was still loading, not
+while calling a method on it. `pdfjs-dist` (used internally by `pdf-parse`) references browser DOM globals like
+`DOMMatrix` at its own module-load time; `@napi-rs/canvas` (`pdf-parse`'s own dependency) ships Node-compatible
+versions of exactly these globals, meant to be used for this. Fixed with an explicit polyfill in `lib/parse/pdf.ts`
+that sets `globalThis.DOMMatrix`/`Path2D`/`ImageData` from `@napi-rs/canvas` *before* `pdf-parse` is ever imported —
+which required switching `pdf-parse`'s import from a static top-level one to a dynamic `await import(...)` placed
+after the polyfill, since a static import always runs before any other code in the module regardless of where it's
+written. Two dead ends on the way, both real and both reverted rather than left half-done: removing `pdf-parse`
+from `serverExternalPackages` (to see if normal bundling would wire the polyfill correctly on its own) instead broke
+local dev worse, with pdfjs-dist's worker file failing to bundle entirely; requiring `@napi-rs/canvas` directly from
+a non-externalized file hit a Turbopack build error ("non-ecmascript placeable asset") on its native `.node`
+binding. Final state: both `pdf-parse` and `@napi-rs/canvas` stay in `serverExternalPackages` (their native/CJS
+internals need to stay unbundled), with the explicit polyfill handling the DOM-global gap that caused the original
+failure. Verified with a full local re-test of all three formats.
+
+While verifying this fix, live output also surfaced a related citation-linking gap: the model sometimes echoes the
+corpus's own source-header tag (`[Notes]`, `[Slides]`) as part of a citation — e.g. `([Notes] Week3_Notes.docx,
+Section: ...)` — instead of just the bare filename the system prompt asks for. `lib/citations.tsx`'s regex expected
+a bare filename immediately after `(`, so this variant would silently fail to match any uploaded file and render as
+plain, unclickable text instead of a broken assumption being caught. Fixed by making the regex tolerate an optional
+leading `[...]` tag before the filename, verified against both citation styles with a standalone regex test.
+
 Separately, a local production build failed transitively with `SqliteError: database is locked` /
 `SQLITE_BUSY` while chasing the above — traced to `lib/db-sqlite.ts` opening the database file (and running WAL
 setup) as a side effect of the module simply being *imported*, which happens for every route during Next's

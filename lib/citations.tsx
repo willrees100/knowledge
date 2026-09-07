@@ -3,11 +3,15 @@
 import type { ReactNode } from "react";
 import type { FileRow } from "./types";
 
-// Matches the exact "(exact-filename.ext, Label)" format the ask/generate-test
-// system prompts require the model to use. We only linkify a citation when its
-// filename matches a real uploaded file for this KB — anything else (the model
-// slipping out of format) is left as plain text rather than a broken link.
-const CITATION_RE = /\(([^,()]+\.(?:pdf|docx|pptx)),\s*([^()]+)\)/gi;
+// Matches the "(exact-filename.ext, Label)" format the ask/generate-test
+// system prompts require the model to use. We only linkify a citation when
+// its filename matches a real uploaded file for this KB — anything else (the
+// model slipping out of format) is left as plain text rather than a broken
+// link. The optional leading `[Notes]`/`[Slides]`/`[Practice Problems]` group
+// tolerates the model echoing the corpus's own "### [Notes] filename.ext —
+// Label" source header verbatim instead of just the filename, which it does
+// often enough in practice to be worth handling rather than losing the link.
+const CITATION_RE = /\((?:\[[^[\]]*\]\s*)?([^,()]+\.(?:pdf|docx|pptx)),\s*([^()]+)\)/gi;
 
 export function linkifyCitations(text: string, files: Pick<FileRow, "id" | "filename">[]): ReactNode[] {
   const parts: ReactNode[] = [];
