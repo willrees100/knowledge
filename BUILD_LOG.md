@@ -235,6 +235,18 @@ fresh serverless instances — the same already-diagnosed missing-Postgres persi
 not a new defect. That step still needs the user to attach a Postgres database via the Vercel dashboard (browser
 login required, unavailable from this environment) — everything else that could be found and fixed without it was.
 
+## Post-launch: added TXT as a supported upload format (user request)
+
+Added `.txt` support to Notes and Practice Problems (left Slides as PDF/PPTX-only — a `.txt` file doesn't
+represent "slides" conceptually). `lib/parse/txt.ts` reads the file as UTF-8 and reuses the same fixed-size
+word-chunking fallback (`lib/parse/chunk.ts`, factored out of `docx.ts` where it already existed) that a
+heading-less DOCX falls back to — TXT has exactly the same "no native structure to cite against" situation DOCX
+has when it lacks headings, so it gets the same honest `Section N` labeling rather than a fabricated page number.
+Updated the citation regex (`lib/citations.tsx`) and the upload UI's `accept` attributes and hints to match.
+Verified end to end locally: uploaded a real `.txt` fixture, asked a question, got a correctly-cited grounded
+answer (`RawNotes.txt, Section 1`), downloaded the file back and confirmed it's byte-identical to the original;
+confirmed a genuinely unsupported type (`.csv`) is still correctly rejected. `tsc`/`build`/`lint` all clean.
+
 ## Known tradeoffs under time pressure
 
 - No automated test suite — verification above was manual/scripted against the real running app, not unit tests,

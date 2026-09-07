@@ -11,7 +11,7 @@ import type { FileRow } from "./types";
 // tolerates the model echoing the corpus's own "### [Notes] filename.ext —
 // Label" source header verbatim instead of just the filename, which it does
 // often enough in practice to be worth handling rather than losing the link.
-const CITATION_RE = /\((?:\[[^[\]]*\]\s*)?([^,()]+\.(?:pdf|docx|pptx)),\s*([^()]+)\)/gi;
+const CITATION_RE = /\((?:\[[^[\]]*\]\s*)?([^,()]+\.(?:pdf|docx|pptx|txt)),\s*([^()]+)\)/gi;
 
 export function linkifyCitations(text: string, files: Pick<FileRow, "id" | "filename">[]): ReactNode[] {
   const parts: ReactNode[] = [];

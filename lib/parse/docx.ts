@@ -1,5 +1,6 @@
 import mammoth from "mammoth";
 import type { Chunk } from "../types";
+import { chunkByWords } from "./chunk";
 
 function stripHtml(html: string): string {
   return html
@@ -10,16 +11,6 @@ function stripHtml(html: string): string {
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function chunkByWords(text: string, wordsPerChunk = 500): Chunk[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  const chunks: Chunk[] = [];
-  for (let i = 0, n = 1; i < words.length; i += wordsPerChunk, n++) {
-    const slice = words.slice(i, i + wordsPerChunk).join(" ");
-    if (slice.trim()) chunks.push({ label: `Section ${n}`, text: slice });
-  }
-  return chunks;
 }
 
 // DOCX has no reliable native "page number" (pagination depends on the

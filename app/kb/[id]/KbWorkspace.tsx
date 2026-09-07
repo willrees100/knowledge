@@ -11,9 +11,9 @@ interface Props {
 }
 
 const FOLDER_META: Record<Folder, { label: string; accept: string; hint: string }> = {
-  notes: { label: "Notes", accept: ".pdf,.docx", hint: "PDF or DOCX, typed text only" },
+  notes: { label: "Notes", accept: ".pdf,.docx,.txt", hint: "PDF, DOCX, or TXT — typed text only" },
   slides: { label: "Slides", accept: ".pdf,.pptx", hint: "PDF or PPTX" },
-  practice: { label: "Practice Problems", accept: ".pdf,.docx,.pptx", hint: "PDF, DOCX, or PPTX" },
+  practice: { label: "Practice Problems", accept: ".pdf,.docx,.pptx,.txt", hint: "PDF, DOCX, PPTX, or TXT" },
 };
 
 type QAEntry = {

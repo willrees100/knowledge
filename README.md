@@ -12,8 +12,8 @@ citations; generate a practice test whose difficulty is anchored to your real pr
 1. **Create a knowledge base (KB)** for one class — name it, describe what it covers, and note anything you want
    the assistant to focus on. That setup form is folded into the assistant's system prompt; it steers tone and
    scope, it isn't just decorative.
-2. **Upload materials** into three folders: Notes (PDF/DOCX), Slides (PDF/PPTX), Practice Problems (PDF/DOCX/PPTX).
-   Typed text only — no OCR.
+2. **Upload materials** into three folders: Notes (PDF/DOCX/TXT), Slides (PDF/PPTX), Practice Problems
+   (PDF/DOCX/PPTX/TXT). Typed text only — no OCR.
 3. **Ask questions.** The assistant answers strictly from your uploaded material, with inline citations like
    `(Week3Notes.docx, Section: Elasticity)` or `(Lecture4Slides.pptx, Slide 4)`. Each citation is a clickable link
    that opens the original file so you can find the exact spot yourself. If the material doesn't contain the
@@ -39,7 +39,9 @@ citations; generate a practice test whose difficulty is anchored to your real pr
   feedback and test-generation logs. **On Vercel, a real Postgres database (e.g. Neon) is required** — see
   "Deploying" and "Known limitations" below for why file-based storage doesn't work there at all.
 - File parsing: `pdf-parse` v2 (native per-page text), a hand-rolled PPTX extractor over the raw slide XML (native
-  per-slide text — no extra dependency needed), `mammoth` for DOCX (heading-based section chunking).
+  per-slide text — no extra dependency needed), `mammoth` for DOCX (heading-based section chunking), and plain TXT
+  (fixed-size word chunking, same fallback DOCX uses when it has no headings — TXT has no native structure to cite
+  against either).
 - No auth. Anyone with a KB's URL can use it — acceptable for this MVP.
 
 ## Setup

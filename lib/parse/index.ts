@@ -29,9 +29,13 @@ export async function extractChunks(filename: string, buffer: Buffer): Promise<C
       const { extractPptx } = await import("./pptx");
       return extractPptx(buffer);
     }
+    case "txt": {
+      const { extractTxt } = await import("./txt");
+      return extractTxt(buffer);
+    }
     default:
       throw new UnsupportedFileError(
-        `Unsupported file type ".${ext}". Supported: PDF, DOCX, PPTX (typed text only, no OCR).`
+        `Unsupported file type ".${ext}". Supported: PDF, DOCX, PPTX, TXT (typed text only, no OCR).`
       );
   }
 }
@@ -44,6 +48,8 @@ export function mimeForExt(ext: string): string {
       return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     case "pptx":
       return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    case "txt":
+      return "text/plain";
     default:
       return "application/octet-stream";
   }
