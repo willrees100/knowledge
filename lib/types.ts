@@ -44,3 +44,12 @@ export interface TestGenerationRow {
 
 export const FALLBACK_ANSWER =
   "I don't have that in your source material for this class — you may want to check with your instructor or look elsewhere.";
+
+// A stable, distinctive fragment of FALLBACK_ANSWER used to detect a fallback
+// response even if the model doesn't reproduce the string byte-for-byte
+// (an added trailing space or punctuation tweak, say) — an exact-equality
+// check would silently miscount that as a "source" answer in the feedback
+// log despite the constraint working correctly in substance.
+export function isFallbackAnswer(answer: string): boolean {
+  return answer.includes("I don't have that in your source material for this class");
+}

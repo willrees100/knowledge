@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { getKB, getFileChunks, insertFeedback } from "@/lib/db";
 import { buildCorpus } from "@/lib/corpus";
 import { generate } from "@/lib/llm";
-import { FALLBACK_ANSWER } from "@/lib/types";
+import { FALLBACK_ANSWER, isFallbackAnswer } from "@/lib/types";
 
 const BASE_GROUNDING_PROMPT = `You answer ONLY using the provided source material below. Do not use outside knowledge, even if you know the answer. If the source material does not contain the answer, respond exactly with: "${FALLBACK_ANSWER}" Never fabricate a citation. Every factual claim in your answer must map to a specific cited source.
 
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const isFallback = answer.trim() === FALLBACK_ANSWER;
+  const isFallback = isFallbackAnswer(answer);
   const feedbackId = randomUUID();
   await insertFeedback({
     id: feedbackId,
