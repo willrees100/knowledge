@@ -247,6 +247,20 @@ Verified end to end locally: uploaded a real `.txt` fixture, asked a question, g
 answer (`RawNotes.txt, Section 1`), downloaded the file back and confirmed it's byte-identical to the original;
 confirmed a genuinely unsupported type (`.csv`) is still correctly rejected. `tsc`/`build`/`lint` all clean.
 
+## Post-launch: fixed a raw JSON-parse crash on oversized uploads (user-reported)
+
+User reported `Unexpected token 'R', "Request En"... is not valid JSON` when uploading a PPTX. Reproduced directly
+against the live app with an oversized POST body: Vercel's own platform returns a `413` with a plain-text body
+(`Request Entity Too Large` / `FUNCTION_PAYLOAD_TOO_LARGE`) before the request ever reaches the app's code, once
+the whole request crosses roughly 4.5MB — the upload handler's `await res.json()` then threw on that non-JSON body,
+which is exactly the raw error the user saw. Fixed two ways in `KbWorkspace.tsx`'s `FolderUploader`: (1) a
+client-side size check (~4MB/file, a conservative margin under the platform limit) that blocks and clearly explains
+oversized files *before* attempting the request, while still uploading the rest of a mixed batch; (2) the response
+parsing now falls back to a readable message instead of crashing when the server didn't return JSON at all (covers
+the case of several individually-fine files still summing past the limit in one batch). Verified: a normal small
+file still uploads correctly through the same code path; the size-limit is now also stated up front in each
+folder's upload hint instead of only being discoverable by hitting it.
+
 ## Known tradeoffs under time pressure
 
 - No automated test suite — verification above was manual/scripted against the real running app, not unit tests,

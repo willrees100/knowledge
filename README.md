@@ -117,8 +117,13 @@ Until this is done, the deployed app will error or silently lose data between re
   is not optional for the deployed app; local dev (`npm run dev`) is unaffected and keeps using SQLite.
 - **No auth, single class per KB, no OCR for scanned documents, no user accounts.** All explicitly out of scope
   for this MVP by design — see the original build spec.
-- **Vercel's free-tier request body limit (4.5MB)** can reject very large slide decks with embedded images/video.
-  Split large files or upgrade the Vercel plan if this bites during grading.
+- **Vercel's serverless request-body limit (~4.5MB)** can reject very large slide decks with embedded
+  images/video — confirmed live: an oversized upload gets a `413` straight from Vercel's platform, before it ever
+  reaches the app. The upload UI now warns and blocks per-file uploads over ~4MB client-side (with a clear reason)
+  instead of the request silently failing with a raw, unhelpful error; a file just under that per-file cap combined
+  with several others in the same batch can still hit the platform limit, which now surfaces as a readable message
+  too rather than crashing on an unparseable response. If a slide deck is too big regardless, split it or compress
+  its images before uploading, or upgrade the Vercel plan.
 
 ## Deliverables
 

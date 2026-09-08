@@ -10,10 +10,19 @@ interface Props {
   initialFiles: FileRow[];
 }
 
+// Conservative margin under Vercel's ~4.5MB serverless request-body limit —
+// see the size-check comment in FolderUploader's handleFiles for why.
+const MAX_UPLOAD_MB = 4;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
 const FOLDER_META: Record<Folder, { label: string; accept: string; hint: string }> = {
-  notes: { label: "Notes", accept: ".pdf,.docx,.txt", hint: "PDF, DOCX, or TXT — typed text only" },
-  slides: { label: "Slides", accept: ".pdf,.pptx", hint: "PDF or PPTX" },
-  practice: { label: "Practice Problems", accept: ".pdf,.docx,.pptx,.txt", hint: "PDF, DOCX, PPTX, or TXT" },
+  notes: { label: "Notes", accept: ".pdf,.docx,.txt", hint: `PDF, DOCX, or TXT — typed text only, max ${MAX_UPLOAD_MB}MB/file` },
+  slides: { label: "Slides", accept: ".pdf,.pptx", hint: `PDF or PPTX, max ${MAX_UPLOAD_MB}MB/file` },
+  practice: {
+    label: "Practice Problems",
+    accept: ".pdf,.docx,.pptx,.txt",
+    hint: `PDF, DOCX, PPTX, or TXT, max ${MAX_UPLOAD_MB}MB/file`,
+  },
 };
 
 type QAEntry = {
@@ -113,23 +122,62 @@ function FolderUploader({
     if (!fileList || fileList.length === 0) return;
     setBusy(true);
     setErrors([]);
+
+    const allFiles = Array.from(fileList);
+    // Vercel's serverless functions reject a request outright (413, plain
+    // text, not JSON) once the whole body crosses ~4.5MB — confirmed live.
+    // MAX_UPLOAD_BYTES is a conservative per-file margin under that (the
+    // multipart body carries some overhead, and a batch of several files
+    // shares the same request). Filtering these out client-side means a
+    // student uploading one oversized slide deck alongside several fine ones
+    // still gets the good ones through, with a clear reason for the one that
+    // didn't, instead of the whole batch failing opaquely.
+    const tooLarge = allFiles.filter((f) => f.size > MAX_UPLOAD_BYTES);
+    const uploadable = allFiles.filter((f) => f.size <= MAX_UPLOAD_BYTES);
+    const sizeErrors = tooLarge.map(
+      (f) =>
+        `${f.name}: too large to upload (${(f.size / 1024 / 1024).toFixed(1)}MB) — this deployment's limit is about ${MAX_UPLOAD_MB}MB per file. Try a smaller or compressed version.`
+    );
+
+    if (uploadable.length === 0) {
+      setErrors(sizeErrors);
+      setBusy(false);
+      return;
+    }
+
     const formData = new FormData();
     formData.append("folder", folder);
-    Array.from(fileList).forEach((f) => formData.append("files", f));
+    uploadable.forEach((f) => formData.append("files", f));
 
     try {
       const res = await fetch(`/api/kb/${kbId}/files`, { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed.");
-      const failed = (data.results as Array<{ filename: string; ok: boolean; error?: string }>).filter(
-        (r) => !r.ok
-      );
-      if (failed.length > 0) {
-        setErrors(failed.map((f) => `${f.filename}: ${f.error}`));
+
+      let data: { results?: Array<{ filename: string; ok: boolean; error?: string }>; error?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        // The response wasn't JSON at all — this happens when Vercel's own
+        // platform rejects the request before it ever reaches our route
+        // handler (e.g. a 413 "Request Entity Too Large" plain-text page for
+        // a request that slipped past the client-side size check above,
+        // such as several files that are each fine alone but too large
+        // together). Surface something actionable instead of a raw parse error.
+        throw new Error(
+          res.status === 413
+            ? `Upload failed: too large for this deployment (combined limit is about ${MAX_UPLOAD_MB}MB per request). Try uploading fewer files at once.`
+            : `Upload failed (server returned ${res.status}).`
+        );
+      }
+
+      if (!res.ok || !data) throw new Error(data?.error ?? "Upload failed.");
+      const failed = (data.results ?? []).filter((r) => !r.ok);
+      const combinedErrors = [...sizeErrors, ...failed.map((f) => `${f.filename}: ${f.error}`)];
+      if (combinedErrors.length > 0) {
+        setErrors(combinedErrors);
       }
       onUploaded();
     } catch (err) {
-      setErrors([err instanceof Error ? err.message : "Upload failed."]);
+      setErrors([...sizeErrors, err instanceof Error ? err.message : "Upload failed."]);
     } finally {
       setBusy(false);
     }
