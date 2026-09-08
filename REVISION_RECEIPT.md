@@ -23,13 +23,11 @@ from actually using it).
   issues already found and fixed during the build (both documented in `BUILD_LOG.md`): a knowledge base's page
   404ing right after creation (the SQLite-on-Vercel persistence bug, fixed by moving to a real Postgres database),
   and file uploads 500ing before a parser lazy-import fix. Confirmed working correctly now.
-- **Switching tabs mid-upload or mid-generation loses all progress.** Real, reproducible, not yet fixed: the
-  Materials/Ask/Practice Test tabs in `KbWorkspace.tsx` are conditionally rendered (`{tab === "x" && <Panel />}`),
-  which unmounts a tab's component — and all its in-progress state — the moment you switch away, even if an
-  upload or test generation is still running. Switching back gets a fresh, empty panel instead of the result.
-  **Not fixed yet** — flagged as "would be cool to fix," not a submission blocker. The fix is straightforward
-  (keep all three panels mounted always, toggle visibility with CSS instead of conditional rendering, so their
-  state survives a tab switch) and is a good candidate for the next work session.
+- **Switching tabs mid-upload or mid-generation loses all progress.** Real, reproducible. **Fixed**: the
+  Materials/Ask/Practice Test tabs in `KbWorkspace.tsx` were conditionally rendered (`{tab === "x" && <Panel />}`),
+  which unmounted a tab's component — and all its in-progress state — the moment you switched away, even if an
+  upload or test generation was still running. Now all three panels stay mounted at all times, with only
+  visibility toggled (`hidden` attribute) — see `BUILD_LOG.md`'s pre-presentation entry.
 
 ## What worked well
 
@@ -37,9 +35,17 @@ from actually using it).
   Confirms the practice-problems-as-anchor design (Feature 3's core constraint) is landing as intended, not just
   technically correct but actually felt right in use.
 - **Grounded Q&A + practice test together, explicitly**: having the practice test alongside an AI-powered search
-  is extremely useful for explaining answers. Feature request that follows directly from this: a question box
-  embedded in the practice-test view itself, so a student can ask about a question without leaving the test. Not
-  built yet — a strong candidate for the next iteration, not required for this submission.
+  is extremely useful for explaining answers. Feature request that followed directly from this — a question box
+  embedded in the practice-test view itself, so a student can ask about a question without leaving the test —
+  is now **built**: a collapsible "💬 Ask about this material" section inside the Practice Test tab, sharing the
+  same grounded-answer logic as the main Ask tab. See `BUILD_LOG.md`'s pre-presentation entry.
+
+## Additional changes made ahead of presentation (not from testing feedback)
+
+Given full discretion to prepare for the presentation, two more items were added: multiple-choice questions now
+reveal which choice was actually correct after grading (previously a wrong answer only said *that* you were
+wrong, not which option was right), and a copy-link button next to the shareable link on the KB page. Both are
+low-risk, zero/low-cost additions — full detail in `BUILD_LOG.md`.
 
 ## Hypothesis check-in
 
@@ -50,6 +56,7 @@ class) actually use it; the rule should be evaluated against that larger sample,
 
 ## Ship decision
 
-**"For an MVP I think it's great thus far."** Nothing here blocks submission — the one confirmed open item
-(tab-switch state loss) and the two feature ideas (search-in-test-panel, and eventually loosening the upload size
-limit) are explicitly follow-up work, not fixes required for this submission.
+**"For an MVP I think it's great thus far."** Everything flagged as broken or wanted has since been addressed:
+the tab-switch state-loss bug is fixed, and the search-in-test-panel feature is built. The only remaining
+open item is the upload size limit, which was explicitly called out as an unavoidable MVP tradeoff, not something
+to fix before this submission.

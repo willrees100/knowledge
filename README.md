@@ -4,7 +4,7 @@ A student turns their own class materials into a source-grounded study assistant
 practice problems for one class; ask questions that are answered **only** from what you uploaded, with clickable
 citations; generate a practice test whose difficulty is anchored to your real practice problems, not guessed.
 
-**Live URL:** https://knowledge-nine-sepia.vercel.app/ — _requires a Postgres database attached, see "Deploying" below_
+**Live URL:** https://knowledge-nine-sepia.vercel.app/
 **Repo:** https://github.com/willrees100/knowledge
 
 ## What it does
@@ -21,10 +21,12 @@ citations; generate a practice test whose difficulty is anchored to your real pr
 4. **Generate a practice test — and actually take it.** Tell it how many questions, which sections, and what to
    focus on. The test's format and difficulty are anchored to your actual uploaded practice problems (notes/slides
    only add topic coverage, never style or difficulty). It refuses to generate anything if you haven't uploaded
-   practice problems. Answer the questions right there in the app and submit — multiple choice grades instantly,
+   practice problems. Answer the questions right there in the app and submit — multiple choice grades instantly
+   (and reveals which choice was actually correct once you've submitted, not just whether you were right), 
    short-answer/calculation questions get judged by the assistant against the correct answer (not just exact-text
    matching), and every answer gets a short, source-cited explanation plus a real "you're right" celebration for
-   correct ones, not just a generic "Correct!".
+   correct ones, not just a generic "Correct!". A collapsible "Ask about this material" box sits right inside the
+   test view too, so you can ask the assistant something without losing your progress or leaving the tab.
 5. **Every answer gets a thumbs up/down**, and every Q&A + test generation is logged with a timestamp. See
    `/admin` for the running totals — this is the evidence mechanism for `HYPOTHESIS.md`'s decision rule.
 
@@ -101,6 +103,8 @@ and switches to it automatically once a connection string is present — you jus
    create its tables on first request against the new database.
 
 Until this is done, the deployed app will error or silently lose data between requests — this step isn't optional.
+**Status on the live URL above: already done** — Neon is attached and confirmed working (creating a KB and
+reloading its page both succeed reliably). These steps are here for anyone redeploying this repo fresh.
 
 ## Known limitations (read before grading/demoing)
 

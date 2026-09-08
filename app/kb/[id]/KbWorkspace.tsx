@@ -37,6 +37,19 @@ type QAEntry = {
 export default function KbWorkspace({ kb, initialFiles }: Props) {
   const [files, setFiles] = useState<FileRow[]>(initialFiles);
   const [tab, setTab] = useState<"materials" | "ask" | "test">("materials");
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // Clipboard API can be blocked (permissions, non-HTTPS, older
+      // browsers) — the link text is already visible on the page as a
+      // fallback, so failing silently here just means "select it manually."
+    }
+  }
 
   async function refreshFiles() {
     const res = await fetch(`/api/kb/${kb.id}`);
@@ -62,9 +75,17 @@ export default function KbWorkspace({ kb, initialFiles }: Props) {
       </div>
       <h1 className="text-2xl font-bold mb-1">{kb.name}</h1>
       {kb.description && <p className="opacity-70 text-sm mb-1">{kb.description}</p>}
-      <p className="text-xs opacity-40 mb-6 break-all">
-        Shareable link: {typeof window !== "undefined" ? window.location.href : `/kb/${kb.id}`}
-      </p>
+      <div className="text-xs opacity-40 mb-6 flex items-center gap-2 flex-wrap">
+        <span className="break-all">
+          Shareable link: {typeof window !== "undefined" ? window.location.href : `/kb/${kb.id}`}
+        </span>
+        <button
+          onClick={copyLink}
+          className="shrink-0 px-2 py-0.5 rounded border border-black/20 dark:border-white/25 opacity-100 hover:bg-black/5 dark:hover:bg-white/10"
+        >
+          {linkCopied ? "Copied!" : "Copy"}
+        </button>
+      </div>
 
       <div className="flex gap-1 border-b border-black/10 dark:border-white/10 mb-6">
         {(["materials", "ask", "test"] as const).map((t) => (
@@ -82,23 +103,37 @@ export default function KbWorkspace({ kb, initialFiles }: Props) {
         ))}
       </div>
 
-      {tab === "materials" && (
-        <div className="space-y-8">
-          {(Object.keys(FOLDER_META) as Folder[]).map((folder) => (
-            <FolderUploader
-              key={folder}
-              kbId={kb.id}
-              folder={folder}
-              files={filesByFolder[folder]}
-              onUploaded={refreshFiles}
-            />
-          ))}
-        </div>
-      )}
+      {/*
+        All three panels stay mounted all the time — only visibility toggles
+        with the `hidden` attribute — instead of conditionally rendering
+        (unmounting) whichever tab isn't active. Conditional rendering was
+        the original approach, and it meant switching away from a tab mid
+        upload or mid test-generation destroyed that panel's component
+        instance — and with it, whatever was in progress — which is exactly
+        the "switching tabs loses all progress" bug reported in
+        REVISION_RECEIPT.md. Keeping every panel alive means its own local
+        state (an in-flight upload, a generated-but-not-yet-submitted test,
+        prior Q&A history) survives a tab switch.
+      */}
+      <div hidden={tab !== "materials"} className="space-y-8">
+        {(Object.keys(FOLDER_META) as Folder[]).map((folder) => (
+          <FolderUploader
+            key={folder}
+            kbId={kb.id}
+            folder={folder}
+            files={filesByFolder[folder]}
+            onUploaded={refreshFiles}
+          />
+        ))}
+      </div>
 
-      {tab === "ask" && <AskPanel kbId={kb.id} files={files} />}
+      <div hidden={tab !== "ask"}>
+        <AskPanel kbId={kb.id} files={files} />
+      </div>
 
-      {tab === "test" && <TestPanel kbId={kb.id} files={files} hasPractice={filesByFolder.practice.length > 0} />}
+      <div hidden={tab !== "test"}>
+        <TestPanel kbId={kb.id} files={files} hasPractice={filesByFolder.practice.length > 0} />
+      </div>
     </div>
   );
 }
@@ -234,6 +269,17 @@ function FolderUploader({
 }
 
 function AskPanel({ kbId, files }: { kbId: string; files: FileRow[] }) {
+  return <QuestionBox kbId={kbId} files={files} />;
+}
+
+// Shared by the full-page Ask tab and the compact version embedded in the
+// Practice Test tab (per user request: being able to ask the material a
+// question without leaving the test you're taking). Each mounted instance
+// keeps its own independent question/answer history — asking something
+// while on the Ask tab doesn't show up inside the test view or vice versa,
+// which is the right behavior since they're separate conversations, but
+// worth knowing if it ever looks like "my question disappeared."
+function QuestionBox({ kbId, files, compact }: { kbId: string; files: FileRow[]; compact?: boolean }) {
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -285,10 +331,10 @@ function AskPanel({ kbId, files }: { kbId: string; files: FileRow[] }) {
 
   return (
     <div>
-      <form onSubmit={handleAsk} className="mb-6">
+      <form onSubmit={handleAsk} className={compact ? "mb-4" : "mb-6"}>
         <textarea
-          className="w-full border border-black/15 dark:border-white/20 rounded-lg px-3 py-2 bg-transparent"
-          rows={3}
+          className="w-full border border-black/15 dark:border-white/20 rounded-lg px-3 py-2 bg-transparent text-sm"
+          rows={compact ? 2 : 3}
           placeholder="Ask a question about this class's material…"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
@@ -297,7 +343,7 @@ function AskPanel({ kbId, files }: { kbId: string; files: FileRow[] }) {
         <button
           type="submit"
           disabled={busy || !question.trim()}
-          className="mt-2 px-4 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
+          className="mt-2 px-4 py-1.5 text-sm rounded-lg bg-black text-white dark:bg-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "Thinking…" : "Ask"}
         </button>
@@ -353,6 +399,7 @@ type GradedResult = {
   feedback: string;
   citation?: string;
   praise?: string;
+  correctIndex?: number;
 };
 
 function TestPanel({ kbId, files, hasPractice }: { kbId: string; files: FileRow[]; hasPractice: boolean }) {
@@ -371,6 +418,10 @@ function TestPanel({ kbId, files, hasPractice }: { kbId: string; files: FileRow[
   const [gradeError, setGradeError] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, GradedResult> | null>(null);
   const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
+
+  // User-requested feature: ask the material a question without leaving the
+  // test. Collapsed by default to keep the test itself the focus.
+  const [askOpen, setAskOpen] = useState(false);
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -484,7 +535,24 @@ function TestPanel({ kbId, files, hasPractice }: { kbId: string; files: FileRow[
       </form>
 
       {questions && (
-        <form onSubmit={handleSubmitAnswers} className="space-y-4">
+        <div className="space-y-4">
+          <div className="border border-black/10 dark:border-white/15 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setAskOpen((v) => !v)}
+              className="w-full text-left px-4 py-3 text-sm font-medium flex items-center justify-between hover:bg-black/5 dark:hover:bg-white/5 rounded-lg"
+            >
+              <span>💬 Ask about this material</span>
+              <span className="opacity-50 text-xs">{askOpen ? "Hide" : "Ask a question without leaving the test"}</span>
+            </button>
+            {askOpen && (
+              <div className="px-4 pb-4 pt-1 border-t border-black/10 dark:border-white/15">
+                <QuestionBox kbId={kbId} files={files} compact />
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleSubmitAnswers} className="space-y-4">
           {truncated && (
             <p className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 inline-block">
               Note: this class&apos;s material is large enough that some of it was truncated for this test.
@@ -517,19 +585,30 @@ function TestPanel({ kbId, files, hasPractice }: { kbId: string; files: FileRow[
 
                 {q.type === "multiple_choice" ? (
                   <div className="space-y-2">
-                    {q.choices.map((choice, ci) => (
-                      <label key={ci} className="flex items-start gap-2 text-sm cursor-pointer">
-                        <input
-                          type="radio"
-                          name={q.id}
-                          disabled={graded}
-                          checked={answers[q.id] === ci}
-                          onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: ci }))}
-                          className="mt-1"
-                        />
-                        <span>{choice}</span>
-                      </label>
-                    ))}
+                    {q.choices.map((choice, ci) => {
+                      const isCorrectChoice = graded && result.correctIndex === ci;
+                      return (
+                        <label
+                          key={ci}
+                          className={`flex items-start gap-2 text-sm cursor-pointer ${
+                            isCorrectChoice ? "font-semibold text-green-700 dark:text-green-400" : ""
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={q.id}
+                            disabled={graded}
+                            checked={answers[q.id] === ci}
+                            onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: ci }))}
+                            className="mt-1"
+                          />
+                          <span>
+                            {choice}
+                            {isCorrectChoice && " ✓ correct answer"}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 ) : (
                   <textarea
@@ -566,7 +645,8 @@ function TestPanel({ kbId, files, hasPractice }: { kbId: string; files: FileRow[
               {grading ? "Grading…" : allAnswered ? "Submit answers" : "Answer every question to submit"}
             </button>
           )}
-        </form>
+          </form>
+        </div>
       )}
     </div>
   );

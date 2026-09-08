@@ -303,6 +303,48 @@ question payload sent to the client before submission carries no answer key; sub
 on all four with accurate, specific feedback, real citations, and praise messages on the two correct answers.
 `tsc`/`build`/`lint` all clean.
 
+## Pre-presentation pass: fixed the two open items from REVISION_RECEIPT.md, plus two safe additions
+
+Given full discretion to act ahead of a live presentation (with no one available to review before it), the goal
+was fixing what was already found and reported, plus a couple of clearly-valuable, low-risk additions — not
+speculative scope creep hours before something has to work in front of an audience.
+
+1. **Tab-switching mid-upload/mid-generation losing progress — fixed.** Root cause was exactly what
+   `REVISION_RECEIPT.md` guessed: `KbWorkspace.tsx` conditionally rendered each tab (`{tab === "x" && <Panel />}`),
+   which unmounts a tab's component — and destroys all its local state — the instant you switch away, even mid
+   upload or mid test-generation. Fixed by keeping all three panels (Materials/Ask/Practice Test) mounted at all
+   times and toggling visibility with the `hidden` attribute instead of conditional rendering. This is a standard,
+   well-understood React pattern specifically for this failure mode — React's reconciliation never removes a
+   component from the tree when its position doesn't change, so switching tabs now only changes what's visible,
+   never what's alive. No LLM involvement, so this was fully verified by code/type/build correctness rather than a
+   live model call.
+2. **A question box embedded in the Practice Test view — built.** The user's own idea, verbatim from their
+   revision feedback: being able to ask the material something without leaving the test. `AskPanel`'s logic was
+   extracted into a shared `QuestionBox` component (used identically by the full-page Ask tab and a `compact`
+   variant embedded in the Practice Test tab, collapsed by default behind a "💬 Ask about this material" toggle so
+   it doesn't crowd the test itself). Both instances keep independent question/answer history, which is correct
+   behavior (they're separate conversations) but worth knowing. Verified for real: asked a question through the
+   underlying endpoint this component calls and got back a correctly grounded, cited answer.
+3. **Correct-answer reveal for multiple choice, added.** Not from the revision feedback, but a clear gap noticed
+   while reviewing the grading flow: after submitting, a wrong multiple-choice answer showed *that* you were
+   wrong and an explanation, but never visually marked *which* choice was actually right. `grade-test` now
+   includes `correctIndex` in its response (only ever sent after grading, never in `generate-test`'s public
+   payload, so there's no way to see it before submitting) and the UI highlights that choice. Verified live: graded
+   a deliberately wrong multiple-choice answer and confirmed the correct choice came back and would render
+   highlighted.
+4. **A copy-link button on the KB page, added.** Small, safe, zero LLM cost — the shareable link was already
+   displayed as plain text; copying it required manually selecting it. `navigator.clipboard.writeText` behind a
+   button, wrapped in a try/catch that fails silently (the link text stays visible/selectable manually) since the
+   Clipboard API can be blocked by browser/permissions in ways worth not crashing over.
+
+**Testing discipline under a real constraint:** `GEMINI_API_KEY` is the same key shared between local dev and the
+live deployment, and it's on the same rate-limited free tier documented earlier in this log — burning through it
+with exhaustive live testing the night before a presentation would actively work against the goal. Testing here
+was deliberately layered: `tsc`/`build`/`lint` (free, unlimited) caught structural correctness first; the
+non-LLM-dependent tab-persistence fix was verified by code/type correctness rather than a live click-through;
+actual Gemini calls were spent only on what genuinely needed one (one test generation, one grading batch, one
+embedded-ask-box question) rather than repeated confirmation passes.
+
 ## Known tradeoffs under time pressure
 
 - No automated test suite — verification above was manual/scripted against the real running app, not unit tests,

@@ -17,6 +17,11 @@ interface GradedResult {
   feedback: string;
   citation?: string;
   praise?: string;
+  /** Only set for multiple_choice, and only ever sent after grading (never
+   *  in generate-test's public payload) — lets the UI mark which choice was
+   *  actually right even when the student picked wrong, with no risk of
+   *  leaking the answer key before submission. */
+  correctIndex?: number;
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -55,6 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         feedback: q.explanation,
         citation: q.citation,
         praise: correct ? pickPraise(q.topic) : undefined,
+        correctIndex: q.correctIndex,
       });
     } else {
       const studentAnswer = typeof answers[q.id] === "string" ? (answers[q.id] as string).trim() : "";
