@@ -39,6 +39,7 @@ export const insertFeedback = backend.insertFeedback;
 export const setFeedbackThumbs = backend.setFeedbackThumbs;
 export const listFeedbackForKB = backend.listFeedbackForKB;
 export const insertTestGeneration = backend.insertTestGeneration;
+export const getTestGeneration = backend.getTestGeneration;
 export const getStats = backend.getStats;
 
 export type { Chunk, Folder };

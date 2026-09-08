@@ -61,6 +61,11 @@ function ensureInit(): Promise<void> {
       await sql`CREATE INDEX IF NOT EXISTS idx_files_kb ON files(kb_id)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_feedback_kb ON feedback(kb_id)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_tests_kb ON test_generations(kb_id)`;
+      // Migration: test_json (the full structured practice test, including
+      // its answer key, so grading has something authoritative to check
+      // against) was added after this table already existed on the live
+      // database. Postgres supports IF NOT EXISTS here directly, unlike SQLite.
+      await sql`ALTER TABLE test_generations ADD COLUMN IF NOT EXISTS test_json TEXT`;
     })();
   }
   return initPromise;
@@ -212,12 +217,28 @@ export async function insertTestGeneration(input: {
   kb_id: string;
   config: unknown;
   question_count: number;
+  test_json: unknown;
 }) {
   await ensureInit();
   await sql`
-    INSERT INTO test_generations (id, kb_id, timestamp, config_json, question_count)
-    VALUES (${input.id}, ${input.kb_id}, ${new Date().toISOString()}, ${JSON.stringify(input.config)}, ${input.question_count})
+    INSERT INTO test_generations (id, kb_id, timestamp, config_json, question_count, test_json)
+    VALUES (${input.id}, ${input.kb_id}, ${new Date().toISOString()}, ${JSON.stringify(input.config)}, ${input.question_count}, ${JSON.stringify(input.test_json)})
   `;
+}
+
+export async function getTestGeneration(id: string) {
+  await ensureInit();
+  const rows = await sql`SELECT * FROM test_generations WHERE id = ${id}`;
+  return (
+    rows as unknown as Array<{
+      id: string;
+      kb_id: string;
+      timestamp: string;
+      config_json: string;
+      question_count: number;
+      test_json: string | null;
+    }>
+  )[0];
 }
 
 export async function getStats() {

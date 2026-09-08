@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { FileRow, Folder, KB } from "@/lib/types";
+import type { FileRow, Folder, KB, PublicTestQuestion } from "@/lib/types";
 import { linkifyCitations } from "@/lib/citations";
 
 interface Props {
@@ -98,7 +98,7 @@ export default function KbWorkspace({ kb, initialFiles }: Props) {
 
       {tab === "ask" && <AskPanel kbId={kb.id} files={files} />}
 
-      {tab === "test" && <TestPanel kbId={kb.id} hasPractice={filesByFolder.practice.length > 0} />}
+      {tab === "test" && <TestPanel kbId={kb.id} files={files} hasPractice={filesByFolder.practice.length > 0} />}
     </div>
   );
 }
@@ -347,19 +347,41 @@ function AskPanel({ kbId, files }: { kbId: string; files: FileRow[] }) {
   );
 }
 
-function TestPanel({ kbId, hasPractice }: { kbId: string; hasPractice: boolean }) {
+type GradedResult = {
+  id: string;
+  correct: boolean;
+  feedback: string;
+  citation?: string;
+  praise?: string;
+};
+
+function TestPanel({ kbId, files, hasPractice }: { kbId: string; files: FileRow[]; hasPractice: boolean }) {
   const [numQuestions, setNumQuestions] = useState(10);
   const [sections, setSections] = useState("");
   const [focus, setFocus] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ test: string; truncated: boolean } | null>(null);
+
+  const [testId, setTestId] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<PublicTestQuestion[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [answers, setAnswers] = useState<Record<string, string | number>>({});
+
+  const [grading, setGrading] = useState(false);
+  const [gradeError, setGradeError] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, GradedResult> | null>(null);
+  const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    setResult(null);
+    setTestId(null);
+    setQuestions(null);
+    setAnswers({});
+    setResults(null);
+    setScore(null);
+    setGradeError(null);
     try {
       const res = await fetch(`/api/kb/${kbId}/generate-test`, {
         method: "POST",
@@ -368,11 +390,37 @@ function TestPanel({ kbId, hasPractice }: { kbId: string; hasPractice: boolean }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to generate test.");
-      setResult({ test: data.test, truncated: data.truncated });
+      setTestId(data.testId);
+      setQuestions(data.questions);
+      setTruncated(data.truncated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleSubmitAnswers(e: React.FormEvent) {
+    e.preventDefault();
+    if (!testId) return;
+    setGrading(true);
+    setGradeError(null);
+    try {
+      const res = await fetch(`/api/kb/${kbId}/grade-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testId, answers }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to grade your answers.");
+      const byId: Record<string, GradedResult> = {};
+      for (const r of data.results as GradedResult[]) byId[r.id] = r;
+      setResults(byId);
+      setScore({ correct: data.score, total: data.total });
+    } catch (err) {
+      setGradeError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setGrading(false);
     }
   }
 
@@ -387,6 +435,11 @@ function TestPanel({ kbId, hasPractice }: { kbId: string; hasPractice: boolean }
       </div>
     );
   }
+
+  const allAnswered = questions !== null && questions.every((q) => {
+    const a = answers[q.id];
+    return q.type === "multiple_choice" ? typeof a === "number" : typeof a === "string" && a.trim().length > 0;
+  });
 
   return (
     <div>
@@ -426,20 +479,99 @@ function TestPanel({ kbId, hasPractice }: { kbId: string; hasPractice: boolean }
           disabled={busy}
           className="px-4 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? "Generating…" : "Generate practice test"}
+          {busy ? "Generating…" : questions ? "Generate a new test" : "Generate practice test"}
         </button>
       </form>
 
-      {result && (
-        <div className="border border-black/10 dark:border-white/15 rounded-lg p-4">
-          {result.truncated && (
-            <p className="text-xs mb-3 px-2 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 inline-block">
+      {questions && (
+        <form onSubmit={handleSubmitAnswers} className="space-y-4">
+          {truncated && (
+            <p className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 inline-block">
               Note: this class&apos;s material is large enough that some of it was truncated for this test.
             </p>
           )}
-          <pre className="whitespace-pre-wrap text-sm font-sans">{result.test}</pre>
-        </div>
+
+          {score && (
+            <div className="border border-black/10 dark:border-white/15 rounded-lg p-4 font-semibold">
+              Score: {score.correct} / {score.total}
+            </div>
+          )}
+
+          {questions.map((q, i) => {
+            const result = results?.[q.id];
+            const graded = result !== undefined;
+            return (
+              <div
+                key={q.id}
+                className={`border rounded-lg p-4 ${
+                  graded
+                    ? result.correct
+                      ? "border-green-400 dark:border-green-700 bg-green-50 dark:bg-green-950/30"
+                      : "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20"
+                    : "border-black/10 dark:border-white/15"
+                }`}
+              >
+                <p className="font-medium mb-3">
+                  {i + 1}. {q.prompt}
+                </p>
+
+                {q.type === "multiple_choice" ? (
+                  <div className="space-y-2">
+                    {q.choices.map((choice, ci) => (
+                      <label key={ci} className="flex items-start gap-2 text-sm cursor-pointer">
+                        <input
+                          type="radio"
+                          name={q.id}
+                          disabled={graded}
+                          checked={answers[q.id] === ci}
+                          onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: ci }))}
+                          className="mt-1"
+                        />
+                        <span>{choice}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <textarea
+                    className="w-full border border-black/15 dark:border-white/20 rounded-lg px-3 py-2 bg-transparent text-sm disabled:opacity-70"
+                    rows={3}
+                    disabled={graded}
+                    placeholder="Your answer…"
+                    value={(answers[q.id] as string) ?? ""}
+                    onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                  />
+                )}
+
+                {graded && (
+                  <div className="mt-3 text-sm">
+                    <p className={result.correct ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}>
+                      {result.correct ? "✅ Correct" : "❌ Not quite"}
+                      {result.praise && <span className="font-semibold"> — {result.praise}</span>}
+                    </p>
+                    <p className="opacity-80 mt-1">{linkifyCitations(withCitation(result), files)}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {gradeError && <p className="text-red-600 dark:text-red-400 text-sm">{gradeError}</p>}
+
+          {!results && (
+            <button
+              type="submit"
+              disabled={grading || !allAnswered}
+              className="px-4 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {grading ? "Grading…" : allAnswered ? "Submit answers" : "Answer every question to submit"}
+            </button>
+          )}
+        </form>
       )}
     </div>
   );
+}
+
+function withCitation(result: GradedResult): string {
+  return result.citation ? `${result.feedback} ${result.citation}` : result.feedback;
 }

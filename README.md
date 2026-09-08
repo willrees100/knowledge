@@ -18,9 +18,13 @@ citations; generate a practice test whose difficulty is anchored to your real pr
    `(Week3Notes.docx, Section: Elasticity)` or `(Lecture4Slides.pptx, Slide 4)`. Each citation is a clickable link
    that opens the original file so you can find the exact spot yourself. If the material doesn't contain the
    answer, it says so explicitly instead of guessing.
-4. **Generate a practice test.** Tell it how many questions, which sections, and what to focus on. The test's
-   format and difficulty are anchored to your actual uploaded practice problems (notes/slides only add topic
-   coverage, never style or difficulty). It refuses to generate anything if you haven't uploaded practice problems.
+4. **Generate a practice test — and actually take it.** Tell it how many questions, which sections, and what to
+   focus on. The test's format and difficulty are anchored to your actual uploaded practice problems (notes/slides
+   only add topic coverage, never style or difficulty). It refuses to generate anything if you haven't uploaded
+   practice problems. Answer the questions right there in the app and submit — multiple choice grades instantly,
+   short-answer/calculation questions get judged by the assistant against the correct answer (not just exact-text
+   matching), and every answer gets a short, source-cited explanation plus a real "you're right" celebration for
+   correct ones, not just a generic "Correct!".
 5. **Every answer gets a thumbs up/down**, and every Q&A + test generation is logged with a timestamp. See
    `/admin` for the running totals — this is the evidence mechanism for `HYPOTHESIS.md`'s decision rule.
 
@@ -100,6 +104,17 @@ Until this is done, the deployed app will error or silently lose data between re
 
 ## Known limitations (read before grading/demoing)
 
+- **Gemini's free API tier has a real, fairly low request cap.** Confirmed directly from a live error while
+  testing, not a guess: `gemini-3.6-flash`'s free tier is limited to 20 requests/day per project. A single class
+  demo session (uploads don't count, but every question, practice-test generation, and practice-test *grading*
+  call does) can burn through that fast — one classroom of students trying it live could hit it well within a
+  class period. What was actually observed: a request that got rate-limited returned a proper `429`, which the app
+  already handles gracefully everywhere (a clear error for Q&A/test generation, a "couldn't auto-grade — here's the
+  reference answer" fallback for test grading — never a raw crash), and a retry after under a minute succeeded, so
+  in practice it may behave more like a rolling/burst limit than a strict once-a-day cutoff — but that's an
+  observation from one retry, not a characterized guarantee. If this matters for tomorrow, the fix is enabling
+  billing on the Google AI Studio project ahead of time (moves to the paid tier — cost is genuinely small, see
+  `VENTURE_ECONOMICS.md`) rather than hoping the free tier holds up under real classroom load.
 - **DOCX has no reliable native page number.** Word/DOCX pagination depends entirely on the reader rendering it —
   the file format itself doesn't store page breaks the way PDF does. Rather than fabricate a page number, DOCX
   files are chunked by heading (`Heading 1`–`3` styles) and cited as `Section: <heading text>`; a document with no

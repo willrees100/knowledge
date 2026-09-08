@@ -85,6 +85,18 @@ function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_tests_kb ON test_generations(kb_id);
   `);
 
+  // Lightweight migration: test_json (the full structured practice test,
+  // including its answer key, so grading has something authoritative to
+  // check against) was added after the table above already existed on any
+  // already-running deployment. SQLite has no `ADD COLUMN IF NOT EXISTS`, so
+  // this just ignores the "duplicate column" error on a database that
+  // already has it.
+  try {
+    db.exec(`ALTER TABLE test_generations ADD COLUMN test_json TEXT`);
+  } catch {
+    // already migrated
+  }
+
   return db;
 }
 
@@ -216,10 +228,26 @@ export async function insertTestGeneration(input: {
   kb_id: string;
   config: unknown;
   question_count: number;
+  test_json: unknown;
 }) {
-  getDb().prepare(
-    `INSERT INTO test_generations (id, kb_id, timestamp, config_json, question_count) VALUES (?, ?, ?, ?, ?)`
-  ).run(input.id, input.kb_id, new Date().toISOString(), JSON.stringify(input.config), input.question_count);
+  getDb()
+    .prepare(
+      `INSERT INTO test_generations (id, kb_id, timestamp, config_json, question_count, test_json) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      input.id,
+      input.kb_id,
+      new Date().toISOString(),
+      JSON.stringify(input.config),
+      input.question_count,
+      JSON.stringify(input.test_json)
+    );
+}
+
+export async function getTestGeneration(id: string) {
+  return getDb().prepare(`SELECT * FROM test_generations WHERE id = ?`).get(id) as
+    | { id: string; kb_id: string; timestamp: string; config_json: string; question_count: number; test_json: string | null }
+    | undefined;
 }
 
 export async function getStats() {

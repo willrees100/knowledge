@@ -261,6 +261,48 @@ the case of several individually-fine files still summing past the limit in one 
 file still uploads correctly through the same code path; the size-limit is now also stated up front in each
 folder's upload hint instead of only being discoverable by hitting it.
 
+## Post-launch: interactive, gradeable practice tests (user request)
+
+The practice test generator originally returned one prose block with an answer key appended — good for reading,
+useless for actually taking. Reworked into a real interactive quiz:
+
+- `generate-test` now asks Gemini for structured JSON (`generationConfig.responseMimeType: "application/json"`,
+  added as an opt-in `jsonMode` flag on `lib/llm.ts`'s `generate()`) instead of prose — each question carries its
+  type (`multiple_choice` | `short_answer`), prompt, an answer key (`correctIndex` or `referenceAnswer`), a short
+  explanation, an optional citation, and a short `topic` tag. Parsed defensively (`sanitizeQuestions` in the route)
+  so one malformed question from the model doesn't take down the whole test — it's just dropped rather than
+  crashing the response.
+- The full generated test (**including its answer key**) is stored server-side in a new `test_json` column on
+  `test_generations` (migrated onto the already-live table — `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` on
+  Postgres, a try/catch-wrapped `ALTER TABLE` on SQLite, which has no `IF NOT EXISTS` for columns). The client only
+  ever receives the answer-free version (`toPublicQuestion` in `lib/types.ts`) until it submits — grading always
+  looks the canonical answer up server-side by `testId` rather than trusting anything the client claims the correct
+  answer was.
+- Grading (`POST /api/kb/[id]/grade-test`) splits by question type: multiple choice grades instantly and
+  deterministically (compare the submitted index to `correctIndex`, no LLM call, no cost, no failure mode) using
+  the explanation already written at generation time; short-answer/calculation questions get judged by a single
+  batched Gemini call per submission, comparing the student's free text against the stored reference answer and
+  writing one short sentence of feedback specific to *that* answer (not just restating the reference answer) —
+  the whole point being that "the equilibrium price is 16" and "P* = 16" should both count as correct, which exact
+  string matching never could.
+- The celebratory feedback the user specifically asked for lives in `lib/praise.ts` — a small pool of messages
+  (including the exact ones requested: "You're awesome!", "DANG YOU'RE SMART!!") plus a couple more in the same
+  spirit, with one template that fills in the question's `topic` tag ("Wow, you know {topic} super well!") when
+  the model provided one. Picked server-side per correct answer so it's genuinely randomized per submission, not a
+  single fixed string.
+- If the batched grading call itself fails (rate limit, network, bad JSON back), grading degrades to showing the
+  reference answer directly rather than crashing the whole submission — exercised for real, not just reasoned
+  about: hit the Gemini free tier's request cap mid-testing today, watched it degrade exactly as designed, then
+  confirmed (after a short wait) it was a short-window throttle rather than a true 24-hour lock — the retried call
+  graded correctly, including catching a wrong short answer with specific, accurate feedback on what was wrong.
+
+Verified end to end against the real running app: generated a 4-question test from the real practice-problems
+fixture (2 multiple choice, 2 short-answer/calculation, matching the source material's own mix); confirmed the
+question payload sent to the client before submission carries no answer key; submitted a deliberately mixed batch
+(one wrong MC, one wrong short answer, one exact-match calculation, one correct MC) and got back correct grading
+on all four with accurate, specific feedback, real citations, and praise messages on the two correct answers.
+`tsc`/`build`/`lint` all clean.
+
 ## Known tradeoffs under time pressure
 
 - No automated test suite — verification above was manual/scripted against the real running app, not unit tests,
