@@ -356,3 +356,33 @@ embedded-ask-box question) rather than repeated confirmation passes.
   a stricter structured-output mode, to keep the LLM call surface simple for the MVP deadline.
 - No rate limiting or abuse protection on the (unauthenticated, per the spec) API routes — acceptable for a
   single-class classroom demo, not for open public traffic.
+
+## Competitive research + Flashcards feature
+
+Before adding more features, did real web research (not memory) on the competitive landscape —
+see `COMPETITIVE_ANALYSIS.md` for the full writeup and `CANVAS_STRATEGY.md` for the separate question of an LTI/
+Canvas-marketplace play. Short version: closest direct competitors are Google NotebookLM (grounded citations,
+free, huge distribution, but general-purpose rather than class-specific) and StudyPDF (cites every quiz question
+back to its source, teacher-facing tier) — and flashcards specifically were a clear, repeated gap: Quizgecko,
+StudyPDF, Ace Quiz, and Mindgrasp all offer them and this app didn't.
+
+**Added: grounded, cited Flashcards** (`app/api/kb/[id]/generate-flashcards`, `FlashcardPanel` in
+`KbWorkspace.tsx`). Deliberately built to differ from the practice-test generator in one specific way: it draws
+from *all* uploaded material (notes and slides included), not just Practice Problems — a flashcard is a recall
+aid for a discrete fact/definition/concept, not a worked-problem simulation, so there's no "style anchor" folder
+the way the test generator has. Mirrors the already-proven JSON-mode-Gemini + sanitize-then-log pattern from
+`generate-test/route.ts` closely (same shape: system prompt demands strict JSON, a `sanitizeCards` function
+defensively validates every field before trusting it, a new `flashcard_generations` table logs every generation
+for the `/admin` evidence mechanism, both DB backends updated in lockstep). Self-graded client-side (click to
+flip, "I know this" / "still learning") rather than server-graded like the test — flashcards don't need a hidden
+answer key the way multiple-choice/short-answer grading does, so there's no separate grade endpoint.
+
+**Testing note, logged honestly:** the actual live Gemini call for flashcard generation could not be exercised
+end-to-end this session — the API key hit Google's prepayment-credit limit again (a pre-existing, user-side
+billing gap unrelated to this change; see the conversation for the "prepayment credits are depleted" diagnosis).
+Everything on both sides of that call *was* verified live: the "no material uploaded" refusal (400), the
+"knowledge base not found" case (404), the KB page rendering with the new Flashcards tab (200), the DB logging
+schema/migration, and a clean `tsc`/`build`/`lint`. The generation call itself relies on the same JSON-mode +
+sanitize pattern already proven live for the practice-test generator, which gives real but not complete
+confidence — flagged here rather than silently assumed, per this project's testing discipline. Worth a real
+end-to-end check once credit is added.

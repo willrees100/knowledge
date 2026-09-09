@@ -58,9 +58,19 @@ function ensureInit(): Promise<void> {
           question_count INTEGER NOT NULL
         )
       `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS flashcard_generations (
+          id TEXT PRIMARY KEY,
+          kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
+          timestamp TEXT NOT NULL,
+          config_json TEXT NOT NULL,
+          card_count INTEGER NOT NULL
+        )
+      `;
       await sql`CREATE INDEX IF NOT EXISTS idx_files_kb ON files(kb_id)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_feedback_kb ON feedback(kb_id)`;
       await sql`CREATE INDEX IF NOT EXISTS idx_tests_kb ON test_generations(kb_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_flashcards_kb ON flashcard_generations(kb_id)`;
       // Migration: test_json (the full structured practice test, including
       // its answer key, so grading has something authoritative to check
       // against) was added after this table already existed on the live
@@ -241,6 +251,14 @@ export async function getTestGeneration(id: string) {
   )[0];
 }
 
+export async function insertFlashcardGeneration(input: { id: string; kb_id: string; config: unknown; card_count: number }) {
+  await ensureInit();
+  await sql`
+    INSERT INTO flashcard_generations (id, kb_id, timestamp, config_json, card_count)
+    VALUES (${input.id}, ${input.kb_id}, ${new Date().toISOString()}, ${JSON.stringify(input.config)}, ${input.card_count})
+  `;
+}
+
 export async function getStats() {
   await ensureInit();
 
@@ -276,6 +294,12 @@ export async function getStats() {
   `;
   const testTotals = (testTotalsRows as unknown as Array<{ total_tests: number; total_questions_generated: number }>)[0];
 
+  const flashcardTotalsRows = await sql`
+    SELECT COUNT(*)::int as total_sets, COALESCE(SUM(card_count),0)::int as total_cards_generated
+    FROM flashcard_generations
+  `;
+  const flashcardTotals = (flashcardTotalsRows as unknown as Array<{ total_sets: number; total_cards_generated: number }>)[0];
+
   const perKBRows = await sql`
     SELECT
       kbs.id, kbs.name,
@@ -308,5 +332,5 @@ export async function getStats() {
     kb_name: string;
   }>;
 
-  return { totals, testTotals, perKB, recentFeedback };
+  return { totals, testTotals, flashcardTotals, perKB, recentFeedback };
 }

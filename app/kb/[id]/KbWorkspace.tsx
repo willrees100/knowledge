@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { FileRow, Folder, KB, PublicTestQuestion } from "@/lib/types";
+import type { FileRow, Flashcard, Folder, KB, PublicTestQuestion } from "@/lib/types";
 import { linkifyCitations } from "@/lib/citations";
 
 interface Props {
@@ -36,7 +36,7 @@ type QAEntry = {
 
 export default function KbWorkspace({ kb, initialFiles }: Props) {
   const [files, setFiles] = useState<FileRow[]>(initialFiles);
-  const [tab, setTab] = useState<"materials" | "ask" | "test">("materials");
+  const [tab, setTab] = useState<"materials" | "ask" | "test" | "flashcards">("materials");
   const [linkCopied, setLinkCopied] = useState(false);
 
   async function copyLink() {
@@ -88,7 +88,7 @@ export default function KbWorkspace({ kb, initialFiles }: Props) {
       </div>
 
       <div className="flex gap-1 border-b border-black/10 dark:border-white/10 mb-6">
-        {(["materials", "ask", "test"] as const).map((t) => (
+        {(["materials", "ask", "test", "flashcards"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -98,7 +98,7 @@ export default function KbWorkspace({ kb, initialFiles }: Props) {
                 : "border-transparent opacity-50 hover:opacity-80"
             }`}
           >
-            {t === "materials" ? "Materials" : t === "ask" ? "Ask" : "Practice Test"}
+            {t === "materials" ? "Materials" : t === "ask" ? "Ask" : t === "test" ? "Practice Test" : "Flashcards"}
           </button>
         ))}
       </div>
@@ -133,6 +133,10 @@ export default function KbWorkspace({ kb, initialFiles }: Props) {
 
       <div hidden={tab !== "test"}>
         <TestPanel kbId={kb.id} files={files} hasPractice={filesByFolder.practice.length > 0} />
+      </div>
+
+      <div hidden={tab !== "flashcards"}>
+        <FlashcardPanel kbId={kb.id} files={files} hasAnyFiles={files.length > 0} />
       </div>
     </div>
   );
@@ -654,4 +658,213 @@ function TestPanel({ kbId, files, hasPractice }: { kbId: string; files: FileRow[
 
 function withCitation(result: GradedResult): string {
   return result.citation ? `${result.feedback} ${result.citation}` : result.feedback;
+}
+
+function withCardCitation(card: Flashcard): string {
+  return card.citation ? `${card.back} ${card.citation}` : card.back;
+}
+
+function FlashcardPanel({ kbId, files, hasAnyFiles }: { kbId: string; files: FileRow[]; hasAnyFiles: boolean }) {
+  const [numCards, setNumCards] = useState(15);
+  const [sections, setSections] = useState("");
+  const [focus, setFocus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [cards, setCards] = useState<Flashcard[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [index, setIndex] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [tally, setTally] = useState<Record<string, "know" | "learning">>({});
+
+  async function handleGenerate(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setCards(null);
+    setIndex(0);
+    setFlipped(false);
+    setTally({});
+    try {
+      const res = await fetch(`/api/kb/${kbId}/generate-flashcards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numCards, sections, focus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to generate flashcards.");
+      setCards(data.cards);
+      setTruncated(data.truncated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function go(delta: number) {
+    if (!cards) return;
+    setIndex((i) => Math.max(0, Math.min(cards.length - 1, i + delta)));
+    setFlipped(false);
+  }
+
+  function shuffle() {
+    if (!cards) return;
+    const shuffled = [...cards];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setCards(shuffled);
+    setIndex(0);
+    setFlipped(false);
+  }
+
+  function mark(cardId: string, verdict: "know" | "learning") {
+    setTally((prev) => ({ ...prev, [cardId]: verdict }));
+    if (cards && index < cards.length - 1) {
+      setIndex(index + 1);
+      setFlipped(false);
+    }
+  }
+
+  if (!hasAnyFiles) {
+    return (
+      <div className="border border-black/10 dark:border-white/15 rounded-lg p-4 text-sm">
+        <p className="opacity-80">
+          This knowledge base has no material uploaded yet. Upload something in the Materials tab first, then come
+          back here to generate flashcards from it.
+        </p>
+      </div>
+    );
+  }
+
+  const knownCount = Object.values(tally).filter((v) => v === "know").length;
+  const learningCount = Object.values(tally).filter((v) => v === "learning").length;
+
+  return (
+    <div>
+      <form onSubmit={handleGenerate} className="space-y-4 mb-6 border border-black/10 dark:border-white/15 rounded-lg p-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">How many cards?</label>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            className="w-24 border border-black/15 dark:border-white/20 rounded-lg px-3 py-1.5 bg-transparent"
+            value={numCards}
+            onChange={(e) => setNumCards(parseInt(e.target.value, 10) || 1)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Which sections/topics to draw from?</label>
+          <input
+            className="w-full border border-black/15 dark:border-white/20 rounded-lg px-3 py-2 bg-transparent"
+            placeholder="e.g. supply & demand, elasticity (leave blank for a mixed set)"
+            value={sections}
+            onChange={(e) => setSections(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Anything to focus on?</label>
+          <input
+            className="w-full border border-black/15 dark:border-white/20 rounded-lg px-3 py-2 bg-transparent"
+            placeholder="e.g. definitions over formulas"
+            value={focus}
+            onChange={(e) => setFocus(e.target.value)}
+          />
+        </div>
+        {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
+        <button
+          type="submit"
+          disabled={busy}
+          className="px-4 py-2 rounded-lg bg-black text-white dark:bg-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? "Generating…" : cards ? "Generate a new set" : "Generate flashcards"}
+        </button>
+      </form>
+
+      {cards && cards.length > 0 && (
+        <div className="space-y-4">
+          {truncated && (
+            <p className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 inline-block">
+              Note: this class&apos;s material is large enough that some of it was truncated for this set.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between text-sm opacity-60">
+            <span>
+              Card {index + 1} of {cards.length}
+              {cards[index].topic ? ` — ${cards[index].topic}` : ""}
+            </span>
+            {(knownCount > 0 || learningCount > 0) && (
+              <span>
+                👍 {knownCount} &nbsp; 🔁 {learningCount}
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setFlipped((f) => !f)}
+            className="w-full min-h-[10rem] border border-black/15 dark:border-white/20 rounded-xl p-6 flex items-center justify-center text-center hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors"
+          >
+            {!flipped ? (
+              <p className="text-lg font-medium">{cards[index].front}</p>
+            ) : (
+              <p className="text-sm whitespace-pre-wrap">{linkifyCitations(withCardCitation(cards[index]), files)}</p>
+            )}
+          </button>
+          <p className="text-center text-xs opacity-40">{flipped ? "Click to see the question" : "Click to reveal the answer"}</p>
+
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => go(-1)}
+              disabled={index === 0}
+              className="px-3 py-1.5 text-sm rounded-lg border border-black/20 dark:border-white/25 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40"
+            >
+              ← Prev
+            </button>
+
+            {flipped ? (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => mark(cards[index].id, "learning")}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-amber-400 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                >
+                  🔁 Still learning
+                </button>
+                <button
+                  type="button"
+                  onClick={() => mark(cards[index].id, "know")}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-green-500 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+                >
+                  👍 I know this
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={shuffle}
+                className="px-3 py-1.5 text-sm rounded-lg border border-black/20 dark:border-white/25 hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                🔀 Shuffle
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => go(1)}
+              disabled={index === cards.length - 1}
+              className="px-3 py-1.5 text-sm rounded-lg border border-black/20 dark:border-white/25 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

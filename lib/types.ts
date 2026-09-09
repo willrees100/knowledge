@@ -78,6 +78,19 @@ export function toPublicQuestion(q: TestQuestion): PublicTestQuestion {
     : { id: q.id, type: q.type, prompt: q.prompt };
 }
 
+// A grounded, cited flashcard. Unlike TestQuestion, there's no public/private
+// split — flashcards are self-graded by the student flipping the card and
+// judging themselves (the standard flashcard-app interaction), so the "back"
+// answer is fine to send to the client immediately rather than needing a
+// server-side answer key checked at submission time.
+export interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+  topic?: string;
+  citation?: string;
+}
+
 export const FALLBACK_ANSWER =
   "I don't have that in your source material for this class — you may want to check with your instructor or look elsewhere.";
 

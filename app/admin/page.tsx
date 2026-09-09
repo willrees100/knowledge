@@ -8,7 +8,7 @@ function pct(n: number, d: number): string {
 }
 
 export default async function AdminPage() {
-  const { totals, testTotals, perKB, recentFeedback } = await getStats();
+  const { totals, testTotals, flashcardTotals, perKB, recentFeedback } = await getStats();
   const rated = totals.thumbs_up + totals.thumbs_down;
 
   return (
@@ -28,6 +28,8 @@ export default async function AdminPage() {
         <Stat label="Rated 👎" value={totals.thumbs_down} />
         <Stat label="Rated positively" value={pct(totals.thumbs_up, rated)} />
         <Stat label="Total questions generated" value={testTotals.total_questions_generated} />
+        <Stat label="Flashcard sets generated" value={flashcardTotals.total_sets} />
+        <Stat label="Total flashcards generated" value={flashcardTotals.total_cards_generated} />
       </div>
 
       <h2 className="text-lg font-semibold mb-3">By knowledge base</h2>

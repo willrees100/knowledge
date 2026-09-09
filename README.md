@@ -27,8 +27,13 @@ citations; generate a practice test whose difficulty is anchored to your real pr
    matching), and every answer gets a short, source-cited explanation plus a real "you're right" celebration for
    correct ones, not just a generic "Correct!". A collapsible "Ask about this material" box sits right inside the
    test view too, so you can ask the assistant something without losing your progress or leaving the tab.
-5. **Every answer gets a thumbs up/down**, and every Q&A + test generation is logged with a timestamp. See
-   `/admin` for the running totals — this is the evidence mechanism for `HYPOTHESIS.md`'s decision rule.
+5. **Generate flashcards.** Unlike the practice test, these draw from *all* uploaded material (notes and slides
+   included, not just practice problems) since a flashcard is a recall aid, not a worked-problem simulation with a
+   style to anchor. Same hard grounding constraint as everything else — a card's back cites its source, and the
+   assistant generates fewer cards rather than inventing filler if the material doesn't support the count you
+   asked for. Click to flip, mark yourself "I know this" / "still learning" as you go.
+6. **Every answer gets a thumbs up/down**, and every Q&A + test/flashcard generation is logged with a timestamp.
+   See `/admin` for the running totals — this is the evidence mechanism for `HYPOTHESIS.md`'s decision rule.
 
 ## Stack
 
@@ -148,5 +153,7 @@ reloading its page both succeed reliably). These steps are here for anyone redep
 
 - `HYPOTHESIS.md` — the precommitted hypothesis and decision rule.
 - `VENTURE_ECONOMICS.md` — pricing, per-question cost, and market-size sketch.
+- `COMPETITIVE_ANALYSIS.md` — who else is in this space, and what actually differentiates this product.
+- `CANVAS_STRATEGY.md` — research on becoming a Canvas LTI app vs. an acquisition pitch to Instructure.
 - `BUILD_LOG.md` — what was built, key decisions, and tradeoffs, written as it happened.
 - `REVISION_RECEIPT.md` — slot for real usage findings and what changed as a result.

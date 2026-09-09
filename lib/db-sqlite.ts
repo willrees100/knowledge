@@ -80,9 +80,18 @@ function getDb(): Database.Database {
       question_count INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS flashcard_generations (
+      id TEXT PRIMARY KEY,
+      kb_id TEXT NOT NULL REFERENCES kbs(id) ON DELETE CASCADE,
+      timestamp TEXT NOT NULL,
+      config_json TEXT NOT NULL,
+      card_count INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_files_kb ON files(kb_id);
     CREATE INDEX IF NOT EXISTS idx_feedback_kb ON feedback(kb_id);
     CREATE INDEX IF NOT EXISTS idx_tests_kb ON test_generations(kb_id);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_kb ON flashcard_generations(kb_id);
   `);
 
   // Lightweight migration: test_json (the full structured practice test,
@@ -250,6 +259,14 @@ export async function getTestGeneration(id: string) {
     | undefined;
 }
 
+export async function insertFlashcardGeneration(input: { id: string; kb_id: string; config: unknown; card_count: number }) {
+  getDb()
+    .prepare(
+      `INSERT INTO flashcard_generations (id, kb_id, timestamp, config_json, card_count) VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(input.id, input.kb_id, new Date().toISOString(), JSON.stringify(input.config), input.card_count);
+}
+
 export async function getStats() {
   const totals = getDb()
     .prepare(
@@ -275,6 +292,10 @@ export async function getStats() {
     .prepare(`SELECT COUNT(*) as total_tests, COALESCE(SUM(question_count),0) as total_questions_generated FROM test_generations`)
     .get() as { total_tests: number; total_questions_generated: number };
 
+  const flashcardTotals = getDb()
+    .prepare(`SELECT COUNT(*) as total_sets, COALESCE(SUM(card_count),0) as total_cards_generated FROM flashcard_generations`)
+    .get() as { total_sets: number; total_cards_generated: number };
+
   const perKB = getDb()
     .prepare(
       `SELECT
@@ -297,5 +318,5 @@ export async function getStats() {
     )
     .all() as Array<{ timestamp: string; question: string; answer_source: string; thumbs: string | null; kb_name: string }>;
 
-  return { totals, testTotals, perKB, recentFeedback };
+  return { totals, testTotals, flashcardTotals, perKB, recentFeedback };
 }
